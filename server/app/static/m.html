@@ -235,7 +235,7 @@ function bipe(tipo) {
     const tons = tipo === "erro" ? [[330, 0], [260, 0.16]] : tipo === "alerta" ? [[880, 0], [880, 0.14]] : [[1800, 0]];
     tons.forEach(([f, atraso]) => {
       const o = audio.createOscillator(), v = audio.createGain();
-      o.frequency.value = f; v.gain.value = 0.08;
+      o.type = "square"; o.frequency.value = f; v.gain.value = 1;   // volume máximo
       o.connect(v).connect(audio.destination);
       o.start(audio.currentTime + atraso); o.stop(audio.currentTime + atraso + 0.12);
     });
@@ -1107,7 +1107,7 @@ telas.localizar = {
       try {
         audio = audio || new AudioContext();
         const o = audio.createOscillator(), g = audio.createGain();
-        o.frequency.value = 600 + 12 * this.valor; g.gain.value = 0.06;
+        o.type = "square"; o.frequency.value = 600 + 12 * this.valor; g.gain.value = 1;   // volume máximo
         o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.05);
       } catch {}
     }
