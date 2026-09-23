@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini WMS RFID</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f3f5f8; color: #222; }
+  header { background: #1f3b5b; color: #fff; padding: 10px 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin: 0; }
+  nav button { background: none; border: none; color: #cfe0f5; font-size: 15px; padding: 8px 12px; cursor: pointer; }
+  nav button.ativo { color: #fff; border-bottom: 3px solid #4fc3f7; }
+  main { padding: 20px; max-width: 1100px; margin: auto; }
+  section { display: none; } section.ativo { display: block; }
+  .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px #0002; }
+  table { width: 100%; border-collapse: collapse; background: #fff; }
+  th, td { padding: 7px 9px; border-bottom: 1px solid #e3e6ea; text-align: left; font-size: 14px; }
+  th { background: #eef2f6; }
+  input, select, button { font-size: 14px; padding: 6px 8px; margin: 3px 4px 3px 0; }
+  button.principal { background: #1f78d1; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+  button.perigo { background: #c62828; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+  .vencido { color: #c62828; font-weight: bold; } .alerta { color: #e67e00; font-weight: bold; }
+  .pos { color: #2e7d32; } .neg { color: #c62828; }
+  #msg { position: fixed; bottom: 20px; right: 20px; padding: 12px 18px; border-radius: 6px; color: #fff; display: none; }
+  label { font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Mini WMS RFID</h1>
+  <nav>
+    <button data-aba="estoque" class="ativo">Estoque</button>
+    <button data-aba="produtos">Produtos</button>
+    <button data-aba="entrada">Entrada</button>
+    <button data-aba="baixa">Baixa</button>
+    <button data-aba="inventario">Inventário</button>
+    <button data-aba="movimentos">Movimentos</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ===================== POSIÇÃO DE ESTOQUE ===================== -->
+  <section id="estoque" class="ativo">
+    <div class="card">
+      <b>Posição de estoque</b> — lotes em ordem FEFO (vence primeiro, sai primeiro). Atualiza sozinha a cada 3 s.
+    </div>
+    <table>
+      <thead><tr><th>SKU</th><th>Produto</th><th>Lote</th><th>Validade</th><th>Qtd</th><th>Tags RFID</th><th>Total produto</th></tr></thead>
+      <tbody id="tabEstoque"></tbody>
+    </table>
+  </section>
+
+  <!-- ===================== PRODUTOS ===================== -->
+  <section id="produtos">
+    <div class="card">
+      <b>Cadastro de produto</b><br>
+      <input type="hidden" id="pId">
+      <input id="pSku" placeholder="SKU (código interno)">
+      <input id="pDesc" placeholder="Descrição" size="30">
+      <input id="pEan" placeholder="EAN (código de barras)">
+      <input id="pUn" value="UN" size="4">
+      <label>Mínimo <input id="pMin" type="number" value="0" style="width:70px"></label>
+      <button class="principal" onclick="salvarProduto()">Salvar</button>
+      <button onclick="limparProduto()">Novo</button>
+    </div>
+    <table>
+      <thead><tr><th>SKU</th><th>Descrição</th><th>EAN</th><th>Un</th><th>Mínimo</th><th></th></tr></thead>
+      <tbody id="tabProdutos"></tbody>
+    </table>
+  </section>
+
+  <!-- ===================== ENTRADA ===================== -->
+  <section id="entrada">
+    <div class="card">
+      <b>Entrada de estoque</b> (pelo PC)<br>
+      <select id="eProduto"></select>
+      <input id="eLote" placeholder="Lote">
+      <label>Validade <input id="eVal" type="date"></label>
+      <input id="eQtd" type="number" placeholder="Quantidade" style="width:110px">
+      <button class="principal" onclick="darEntrada()">Dar entrada</button>
+      <p><label>Entrada com etiquetas RFID é feita no coletor (cada tag lida = 1 unidade).</label></p>
+    </div>
+  </section>
+
+  <!-- ===================== BAIXA ===================== -->
+  <section id="baixa">
+    <div class="card">
+      <b>Baixa por quantidade</b> — o sistema escolhe os lotes por FEFO
+      (lotes vencidos só saem com o motivo VENCIMENTO)<br>
+      <input id="bCodigo" placeholder="Leia o código de barras ou SKU" size="28" onchange="acharProdutoBaixa()">
+      <select id="bProduto"></select>
+      <input id="bQtd" type="number" placeholder="Quantidade" style="width:110px">
+      <select id="bMotivo"></select>
+      <button onclick="previaFefo()">Ver lotes (FEFO)</button>
+      <button class="perigo" onclick="darBaixa()">Confirmar baixa</button>
+      <div id="bPrevia"></div>
+    </div>
+    <div class="card">
+      <b>Baixa de uma tag RFID</b> (digitando o EPC)<br>
+      <input id="bEpc" placeholder="EPC" size="30">
+      <button class="perigo" onclick="baixaEpc()">Baixar tag</button>
+    </div>
+  </section>
+
+  <!-- ===================== INVENTÁRIO ===================== -->
+  <section id="inventario">
+    <div class="card">
+      <input id="iNome" placeholder="Nome do inventário (ex.: Contagem setembro)" size="35">
+      <button class="principal" onclick="abrirInventario()">Abrir inventário</button>
+      <select id="iLista" onchange="carregarInventario()"></select>
+    </div>
+    <div id="iDetalhe" style="display:none">
+      <div class="card">
+        <b id="iTitulo"></b><br>
+        <label>Adicionar item contado no PC:</label><br>
+        <input id="iCodigo" placeholder="Código de barras ou SKU" onchange="acharProdutoInv()">
+        <select id="iProduto" onchange="carregarLotesInv()"></select>
+        <select id="iLote"></select>
+        <input id="iQtd" type="number" placeholder="Qtd contada" style="width:110px">
+        <button class="principal" onclick="adicionarContagem()">Adicionar</button>
+        <button class="perigo" style="float:right" onclick="fecharInventario()">Fechar e ajustar estoque</button>
+        <p><label>No coletor: leia as tags RFID ou o código de barras dentro deste inventário.</label></p>
+      </div>
+      <h3>Confronto: físico × sistema</h3>
+      <table>
+        <thead><tr><th>SKU</th><th>Produto</th><th>Lote</th><th>Validade</th><th>Sistema</th><th>Contado</th><th>Diferença</th></tr></thead>
+        <tbody id="tabConfronto"></tbody>
+      </table>
+      <h3>Itens contados</h3>
+      <table>
+        <thead><tr><th>Hora</th><th>SKU</th><th>Lote</th><th>Qtd</th><th>EPC</th><th>Origem</th><th>Meio</th><th></th></tr></thead>
+        <tbody id="tabContagens"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===================== MOVIMENTOS ===================== -->
+  <section id="movimentos">
+    <table>
+      <thead><tr><th>Data/hora</th><th>Tipo</th><th>SKU</th><th>Lote</th><th>Qtd</th><th>EPC</th><th>Origem</th><th>Meio</th><th>Motivo</th></tr></thead>
+      <tbody id="tabMovimentos"></tbody>
+    </table>
+  </section>
+</main>
+
+<div id="msg"></div>
+
+<script>
+// ---------------------------------------------------------------- utilidades
+async function api(metodo, url, corpo) {
+  const r = await fetch(url, {
+    method: metodo,
+    headers: { "Content-Type": "application/json" },
+    body: corpo ? JSON.stringify(corpo) : undefined,
+  });
+  const dados = await r.json();
+  if (!r.ok) { mensagem(dados.detail || "Erro", true); throw new Error(dados.detail); }
+  return dados;
+}
+
+function mensagem(texto, erro) {
+  const m = document.getElementById("msg");
+  m.textContent = texto;
+  m.style.background = erro ? "#c62828" : "#2e7d32";
+  m.style.display = "block";
+  clearTimeout(m.timer);
+  m.timer = setTimeout(() => (m.style.display = "none"), 3500);
+}
+
+// Evita que textos cadastrados quebrem o HTML da tabela
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const $ = (id) => document.getElementById(id);
+const dataBR = (d) => (d ? d.split("-").reverse().join("/") : "-");
+
+function classeValidade(dias) {
+  if (dias === null || dias === undefined) return "";
+  if (dias < 0) return "vencido";
+  if (dias <= 30) return "alerta";
+  return "";
+}
+
+// ---------------------------------------------------------------- abas
+let abaAtual = "estoque";
+document.querySelectorAll("nav button").forEach((b) =>
+  b.addEventListener("click", () => {
+    document.querySelectorAll("nav button, section").forEach((e) => e.classList.remove("ativo"));
+    b.classList.add("ativo");
+    abaAtual = b.dataset.aba;
+    $(abaAtual).classList.add("ativo");
+    atualizar();
+  })
+);
+
+// ---------------------------------------------------------------- estoque
+async function carregarEstoque() {
+  const linhas = await api("GET", "/api/estoque");
+  const total = {};
+  linhas.forEach((l) => (total[l.produto_id] = (total[l.produto_id] || 0) + (l.quantidade || 0)));
+  let anterior = null;
+  $("tabEstoque").innerHTML = linhas.map((l) => {
+    const primeiro = l.produto_id !== anterior;
+    anterior = l.produto_id;
+    const abaixo = total[l.produto_id] < l.estoque_min;
+    return `<tr>
+      <td>${primeiro ? esc(l.sku) : ""}</td>
+      <td>${primeiro ? esc(l.descricao) : ""}</td>
+      <td>${esc(l.lote || "-")}</td>
+      <td class="${classeValidade(l.dias_para_vencer)}">${dataBR(l.validade)}</td>
+      <td>${l.quantidade ?? 0}</td>
+      <td>${l.tags || ""}</td>
+      <td class="${abaixo ? "vencido" : ""}">${primeiro ? total[l.produto_id] + " " + esc(l.unidade) + (abaixo ? " (abaixo do mínimo)" : "") : ""}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ---------------------------------------------------------------- produtos
+let produtos = [];
+
+async function carregarProdutos() {
+  produtos = await api("GET", "/api/produtos");
+  $("tabProdutos").innerHTML = produtos.map((p) => `<tr>
+    <td>${esc(p.sku)}</td><td>${esc(p.descricao)}</td><td>${esc(p.ean)}</td>
+    <td>${esc(p.unidade)}</td><td>${p.estoque_min}</td>
+    <td><button onclick="editarProduto(${p.id})">Editar</button>
+        <button onclick="excluirProduto(${p.id})">Excluir</button></td></tr>`).join("");
+  const opcoes = '<option value="">-- produto --</option>' +
+    produtos.map((p) => `<option value="${p.id}">${esc(p.sku)} - ${esc(p.descricao)}</option>`).join("");
+  ["eProduto", "bProduto", "iProduto"].forEach((id) => { const v = $(id).value; $(id).innerHTML = opcoes; $(id).value = v; });
+}
+
+async function salvarProduto() {
+  const dados = { sku: $("pSku").value, descricao: $("pDesc").value, ean: $("pEan").value,
+                  unidade: $("pUn").value, estoque_min: Number($("pMin").value) };
+  if ($("pId").value) await api("PUT", "/api/produtos/" + $("pId").value, dados);
+  else await api("POST", "/api/produtos", dados);
+  mensagem("Produto salvo");
+  limparProduto();
+  carregarProdutos();
+}
+
+function editarProduto(id) {
+  const p = produtos.find((x) => x.id === id);
+  $("pId").value = p.id; $("pSku").value = p.sku; $("pDesc").value = p.descricao;
+  $("pEan").value = p.ean || ""; $("pUn").value = p.unidade; $("pMin").value = p.estoque_min;
+}
+
+function limparProduto() {
+  ["pId", "pSku", "pDesc", "pEan"].forEach((id) => ($(id).value = ""));
+  $("pUn").value = "UN"; $("pMin").value = 0;
+}
+
+async function excluirProduto(id) {
+  if (!confirm("Excluir produto?")) return;
+  await api("DELETE", "/api/produtos/" + id);
+  carregarProdutos();
+}
+
+// ---------------------------------------------------------------- entrada
+async function darEntrada() {
+  const r = await api("POST", "/api/entradas", {
+    produto_id: Number($("eProduto").value), lote: $("eLote").value,
+    validade: $("eVal").value || null, quantidade: Number($("eQtd").value),
+  });
+  mensagem(`Entrada: ${r.quantidade} de ${r.sku}, lote ${r.lote}`);
+  $("eQtd").value = "";
+}
+
+// ---------------------------------------------------------------- baixa
+async function acharProdutoBaixa() {
+  const p = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent($("bCodigo").value));
+  $("bProduto").value = p.id;
+  $("bQtd").focus();
+}
+
+async function previaFefo() {
+  const plano = await api("GET", `/api/fefo?produto_id=${$("bProduto").value}&quantidade=${$("bQtd").value}&motivo=${$("bMotivo").value}`);
+  $("bPrevia").innerHTML = "<p>Sairá dos lotes:</p><ul>" +
+    plano.map((l) => `<li>Lote ${esc(l.lote)} (validade ${dataBR(l.validade)}): ${l.quantidade}</li>`).join("") + "</ul>";
+}
+
+async function darBaixa() {
+  const r = await api("POST", "/api/baixas", {
+    produto_id: Number($("bProduto").value), quantidade: Number($("bQtd").value),
+    motivo: $("bMotivo").value, meio: $("bCodigo").value ? "BARRAS" : "MANUAL",
+  });
+  mensagem("Baixa feita: " + r.lotes.map((l) => `${l.quantidade} do lote ${l.lote}`).join(", "));
+  $("bPrevia").innerHTML = ""; $("bQtd").value = ""; $("bCodigo").value = "";
+}
+
+async function baixaEpc() {
+  const r = await api("POST", "/api/baixas", { epcs: [$("bEpc").value], motivo: $("bMotivo").value });
+  const t = r.tags[0];
+  if (t.ok) mensagem(`Tag baixada: ${t.sku} lote ${t.lote}`); else mensagem(t.erro, true);
+  $("bEpc").value = "";
+}
+
+// ---------------------------------------------------------------- inventário
+async function carregarInventarios() {
+  const lista = await api("GET", "/api/inventarios");
+  const atual = $("iLista").value;
+  $("iLista").innerHTML = '<option value="">-- escolha um inventário --</option>' +
+    lista.map((i) => `<option value="${i.id}">#${i.id} ${esc(i.nome)} (${i.status})</option>`).join("");
+  $("iLista").value = atual;
+}
+
+async function abrirInventario() {
+  const r = await api("POST", "/api/inventarios", { nome: $("iNome").value || "Inventário" });
+  await carregarInventarios();
+  $("iLista").value = r.id;
+  carregarInventario();
+}
+
+async function carregarInventario() {
+  const id = $("iLista").value;
+  $("iDetalhe").style.display = id ? "block" : "none";
+  if (!id) return;
+  const d = await api("GET", "/api/inventarios/" + id);
+  $("iTitulo").textContent = `Inventário #${d.inventario.id} - ${d.inventario.nome} - ${d.inventario.status}`;
+  $("tabConfronto").innerHTML = d.confronto.map((c) => `<tr>
+    <td>${esc(c.sku)}</td><td>${esc(c.descricao)}</td><td>${esc(c.lote)}</td><td>${dataBR(c.validade)}</td>
+    <td>${c.sistema}</td><td>${c.contado}</td>
+    <td class="${c.diferenca > 0 ? "pos" : c.diferenca < 0 ? "neg" : ""}">${c.diferenca > 0 ? "+" : ""}${c.diferenca}</td></tr>`).join("");
+  const aberto = d.inventario.status === "ABERTO";
+  $("tabContagens").innerHTML = d.contagens.map((c) => `<tr>
+    <td>${esc(c.data_hora)}</td><td>${esc(c.sku)}</td><td>${esc(c.lote)}</td><td>${c.quantidade}</td>
+    <td>${esc(c.epc)}</td><td>${esc(c.origem)}</td><td>${esc(c.meio)}</td>
+    <td>${aberto ? `<button onclick="removerContagem(${c.id})">Remover</button>` : ""}</td></tr>`).join("");
+}
+
+async function acharProdutoInv() {
+  const p = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent($("iCodigo").value));
+  $("iProduto").value = p.id;
+  await carregarLotesInv();
+  $("iQtd").focus();
+}
+
+async function carregarLotesInv() {
+  const p = produtos.find((x) => x.id === Number($("iProduto").value));
+  if (!p) return;
+  const d = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent(p.sku));
+  $("iLote").innerHTML = d.lotes.map((l) => `<option value="${l.id}">${esc(l.lote)} (val. ${dataBR(l.validade)})</option>`).join("");
+}
+
+async function adicionarContagem() {
+  await api("POST", `/api/inventarios/${$("iLista").value}/contagens`, {
+    lote_id: Number($("iLote").value), quantidade: Number($("iQtd").value),
+    meio: $("iCodigo").value ? "BARRAS" : "MANUAL",
+  });
+  $("iQtd").value = ""; $("iCodigo").value = "";
+  carregarInventario();
+}
+
+async function removerContagem(id) {
+  await api("DELETE", `/api/inventarios/${$("iLista").value}/contagens/${id}`);
+  carregarInventario();
+}
+
+async function fecharInventario() {
+  if (!confirm("Fechar o inventário? O estoque do sistema será ajustado para o que foi contado.")) return;
+  const r = await api("POST", `/api/inventarios/${$("iLista").value}/fechar`);
+  mensagem(`Inventário fechado. ${r.ajustes} lote(s) ajustado(s).`);
+  carregarInventarios(); carregarInventario();
+}
+
+// ---------------------------------------------------------------- movimentos
+async function carregarMovimentos() {
+  const lista = await api("GET", "/api/movimentos");
+  $("tabMovimentos").innerHTML = lista.map((m) => `<tr>
+    <td>${esc(m.data_hora)}</td><td>${esc(m.tipo)}</td><td>${esc(m.sku)}</td><td>${esc(m.lote)}</td>
+    <td class="${m.quantidade > 0 ? "pos" : "neg"}">${m.quantidade > 0 ? "+" : ""}${m.quantidade}</td>
+    <td>${esc(m.epc)}</td><td>${esc(m.origem)}</td><td>${esc(m.meio)}</td><td>${esc(m.motivo)}</td></tr>`).join("");
+}
+
+// ---------------------------------------------------------------- atualização automática
+// O que o coletor faz aparece aqui sozinho (consulta o servidor a cada 3 s).
+function atualizar() {
+  if (abaAtual === "estoque") carregarEstoque();
+  if (abaAtual === "movimentos") carregarMovimentos();
+  if (abaAtual === "inventario" && $("iLista").value) carregarInventario();
+}
+
+async function iniciar() {
+  const s = await api("GET", "/api/status");
+  $("bMotivo").innerHTML = s.motivos.map((m) => `<option>${m}</option>`).join("");
+  await carregarProdutos();
+  await carregarInventarios();
+  atualizar();
+  setInterval(atualizar, 3000);
+}
+iniciar();
+</script>
+</body>
+</html>

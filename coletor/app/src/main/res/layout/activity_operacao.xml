@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tela única usada por Entrada, Baixa, Inventário e Consulta.
+     A OperacaoActivity mostra/esconde os campos conforme a operação. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="8dp">
+
+    <!-- Parâmetros da ENTRADA -->
+    <LinearLayout android:id="@+id/painelEntrada" android:orientation="vertical"
+        android:layout_width="match_parent" android:layout_height="wrap_content">
+        <Spinner android:id="@+id/spProduto"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+            <EditText android:id="@+id/edLote" android:hint="Lote"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:inputType="textCapCharacters" />
+            <EditText android:id="@+id/edValidade" android:hint="Validade AAAA-MM-DD"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:inputType="date" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Parâmetro da BAIXA -->
+    <Spinner android:id="@+id/spMotivo"
+        android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+    <!-- Parâmetro do INVENTÁRIO -->
+    <Spinner android:id="@+id/spInventario"
+        android:layout_width="match_parent" android:layout_height="wrap_content" />
+
+    <!-- Escolha do meio de leitura: muda o que o gatilho faz -->
+    <RadioGroup android:id="@+id/rgMeio" android:orientation="horizontal"
+        android:layout_width="match_parent" android:layout_height="wrap_content">
+        <RadioButton android:id="@+id/rbRfid" android:text="RFID" android:checked="true"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        <RadioButton android:id="@+id/rbBarras" android:text="Código de barras"
+            android:layout_width="wrap_content" android:layout_height="wrap_content" />
+    </RadioGroup>
+
+    <!-- ===== Modo RFID: aperte o gatilho, as tags aparecem na lista ===== -->
+    <LinearLayout android:id="@+id/painelRfid" android:orientation="vertical"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <TextView android:id="@+id/txContador" android:textSize="18sp" android:textStyle="bold"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="0 tags lidas" />
+        <ListView android:id="@+id/lista"
+            android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+            <Button android:id="@+id/btLimpar" android:text="Limpar"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="56dp" />
+            <Button android:id="@+id/btEnviarRfid" android:text="Enviar"
+                android:layout_width="0dp" android:layout_weight="2" android:layout_height="56dp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ===== Modo código de barras: o leitor "digita" o código no campo ===== -->
+    <LinearLayout android:id="@+id/painelBarras" android:orientation="vertical" android:visibility="gone"
+        android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <EditText android:id="@+id/edCodigo" android:hint="Leia o código de barras"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:inputType="text" android:imeOptions="actionDone" android:singleLine="true" />
+        <TextView android:id="@+id/txProduto" android:textSize="16sp"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <Spinner android:id="@+id/spLote"
+            android:layout_width="match_parent" android:layout_height="wrap_content" />
+        <EditText android:id="@+id/edQtd" android:hint="Quantidade"
+            android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:inputType="numberDecimal" />
+        <Button android:id="@+id/btEnviarBarras" android:text="Enviar"
+            android:layout_width="match_parent" android:layout_height="56dp" />
+    </LinearLayout>
+
+    <!-- Resposta do servidor -->
+    <TextView android:id="@+id/txResultado" android:textSize="15sp"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:padding="6dp" android:background="#EEEEEE" />
+</LinearLayout>
