@@ -253,12 +253,11 @@
                 <p class="ajuda">Adicione os produtos que vão chegar. O número da ordem é gerado sozinho.</p>
                 <div class="campos">
                   <label class="campo largo"><span>Produto</span><select id="orProduto" data-produtos="ativos"></select></label>
-                  <label class="campo"><span>Validade</span><input id="orValidade" type="date"></label>
                   <label class="campo"><span>Quantidade</span><input id="orQtd" type="number" min="0" step="any"></label>
                 </div>
                 <div class="botoes"><button type="button" id="orAdicionar">+ Adicionar item</button></div>
                 <div class="tabela" style="margin-top:10px"><table>
-                  <thead><tr><th>Produto</th><th>Validade</th><th class="num">Qtd</th><th></th></tr></thead>
+                  <thead><tr><th>Produto</th><th class="num">Qtd</th><th></th></tr></thead>
                   <tbody id="tabOrdemNova"></tbody></table></div>
                 <div class="botoes">
                   <button class="primario" type="submit">Criar ordem</button>
@@ -975,8 +974,8 @@ function adicionarItemOrdem() {
   if (!p) return toast("Escolha o produto do item", "erro");
   if (!(qtd > 0)) return toast("Informe a quantidade esperada", "erro");
   if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || "SEM-LOTE"))) return toast(`${p.sku} já está na lista`, "erro");
-  itensNovaOrdem.push({ produto_id: p.id, lote: lote || "SEM-LOTE", validade: $("orValidade").value || null, quantidade: qtd });
-  ["orProduto", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
+  itensNovaOrdem.push({ produto_id: p.id, lote: lote || "SEM-LOTE", validade: null, quantidade: qtd });
+  ["orProduto", "orQtd"].forEach((id) => ($(id).value = ""));
   desenharItensOrdem();
   $("orProduto").focus();
 }
@@ -985,10 +984,10 @@ $("orQtd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.pr
 function desenharItensOrdem() {
   $("tabOrdemNova").innerHTML = itensNovaOrdem.map((i, n) => {
     const p = produtoPorId(i.produto_id);
-    return `<tr><td>${esc(p.sku)} <span class="fraco">${esc(p.descricao)}</span></td><td>${dataBR(i.validade)}</td>
+    return `<tr><td>${esc(p.sku)} <span class="fraco">${esc(p.descricao)}</span></td>
       <td class="num">${num(i.quantidade)} ${esc(p.unidade)}</td>
       <td class="acoes"><button type="button" class="link perigo-texto" onclick="itensNovaOrdem.splice(${n},1);desenharItensOrdem()">remover</button></td></tr>`;
-  }).join("") || vazio(4, "Nenhum item adicionado");
+  }).join("") || vazio(3, "Nenhum item adicionado");
 }
 aoEnviar($("formOrdem"), async () => {
   if (!itensNovaOrdem.length) throw new Error("Adicione pelo menos um item");
@@ -1041,14 +1040,13 @@ async function carregarOrdem(id) {
       <div class="kpi ${lidas >= total ? "sucesso" : "alerta"}"><div class="rotulo">Recebido</div><div class="valor">${num(lidas)}</div></div>
       <div class="kpi"><div class="rotulo">Falta</div><div class="valor">${num(Math.max(total - lidas, 0))}</div></div>
     </div>
-    <div class="tabela"><table><thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Recebido</th><th style="width:25%"></th></tr></thead><tbody>
+    <div class="tabela"><table><thead><tr><th>Produto</th><th class="num">Recebido</th><th style="width:30%"></th></tr></thead><tbody>
       ${d.itens.map((i) => `<tr><td>${esc(i.sku)} <span class="fraco">${esc(i.descricao)}</span>${i.etiquetas ? ` <span class="selo info">${i.etiquetas} RFID</span>` : ""}</td>
-        <td>${esc(i.lote)}</td><td>${dataBR(i.validade)}</td>
         <td class="num"><b>${num(i.lidas)}</b> / ${num(i.prevista)} ${esc(i.unidade)}</td><td>${barra(i.lidas, i.prevista)}</td></tr>`).join("")}
     </tbody></table></div>
     <h3 style="margin:18px 0 8px;font-size:15px">Leituras ${aberto ? '<span class="fraco">(aparecem aqui na hora em que o coletor lê)</span>' : ""}</h3>
-    <div class="tabela"><table><thead><tr><th>Hora</th><th>Produto / lote</th><th>Etiqueta (EPC) / qtd</th><th>Origem</th><th></th></tr></thead><tbody>
-      ${d.leituras.map((l) => `<tr class="${novas.has(l.id) ? "nova" : ""}"><td>${dataHoraBR(l.data_hora).slice(11)}</td><td>${esc(l.sku)} · ${esc(l.lote)}</td>
+    <div class="tabela"><table><thead><tr><th>Hora</th><th>Produto</th><th>Etiqueta (EPC) / qtd</th><th>Origem</th><th></th></tr></thead><tbody>
+      ${d.leituras.map((l) => `<tr class="${novas.has(l.id) ? "nova" : ""}"><td>${dataHoraBR(l.data_hora).slice(11)}</td><td>${esc(l.sku)}</td>
         <td>${l.epc ? `<span class="mono">${esc(l.epc)}</span>` : `${num(l.quantidade)} un. (${esc(l.meio.toLowerCase())})`}</td>
         <td class="fraco">${esc(l.origem)}</td>
         <td class="acoes">${aberto ? `<button class="link perigo-texto" onclick="removerLeituraOrdem(${l.id}, this)">remover</button>` : ""}</td></tr>`).join("")

@@ -763,11 +763,11 @@ telas.entrada = {
         ${r.fornecedor ? `<div class="fraco">${esc(r.fornecedor)}</div>` : ""}${barraProgresso(lidas, total)}</div>
       <div class="card"><h2>Itens <span class="dir fraco">toque ou bipe o produto</span></h2><ul class="lista">
         ${d.itens.map((i) => `<li class="clicavel ${i.id === this.itemId ? "escolhido" : ""}" data-acao="escolherItem" data-valor="${i.id}">
-          <div class="info"><b>${esc(i.sku)}</b> · lote ${esc(i.lote)} ${seloValidade(i.validade)}
-            <div class="fraco">${esc(i.descricao)} · val. ${dataBR(i.validade)}</div>${barraProgresso(i.lidas, i.prevista)}</div>
+          <div class="info"><b>${esc(i.sku)}</b>${i.lote !== "SEM-LOTE" ? " · lote " + esc(i.lote) : ""} ${seloValidade(i.validade)}
+            <div class="fraco">${esc(i.descricao)}${i.validade ? " · val. " + dataBR(i.validade) : ""}</div>${barraProgresso(i.lidas, i.prevista)}</div>
           <span class="qtd">${num(i.lidas)}/${num(i.prevista)}</span></li>`).join("")}</ul></div>
       ${item ? `<div class="card"><h2>Item escolhido</h2>
-          <div class="produto">${esc(item.sku)} · lote ${esc(item.lote)}</div>
+          <div class="produto">${esc(item.sku)}${item.lote !== "SEM-LOTE" ? " · lote " + esc(item.lote) : ""}</div>
           <p class="fraco" style="margin:4px 0 8px">Aperte o gatilho perto das etiquetas: cada uma já vai para o servidor.</p>
           <label class="campo"><span>Sem etiqueta RFID? Quantidade</span><input id="rcQtd" inputmode="decimal" enterkeyhint="done" data-enter="adicionarQtd"></label>
           <div class="botoes"><button class="b" data-acao="adicionarQtd" id="rcQtdBotao">Adicionar quantidade</button></div></div>`
