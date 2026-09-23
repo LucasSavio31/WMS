@@ -26,6 +26,9 @@ import kotlin.concurrent.thread
  *
  * É um "object" (uma única instância) para conectar uma vez só e
  * reaproveitar a conexão em todas as telas.
+ *
+ * Todo erro do SDK é tratado aqui (catch Throwable): um problema no RFID
+ * nunca pode fechar o app, só aparecer como mensagem na tela.
  */
 object Rfid : RfidEventsListener {
 
@@ -50,8 +53,8 @@ object Rfid : RfidEventsListener {
                     leitor!!.connect()
                     configurar(leitor!!)
                     "RFID conectado: " + dispositivos[0].name
-                } catch (e: Exception) {
-                    "RFID indisponível (${e.message})"
+                } catch (e: Throwable) {
+                    "RFID indisponível (${e.javaClass.simpleName}: ${e.message})"
                 }
             )
         }
@@ -86,7 +89,7 @@ object Rfid : RfidEventsListener {
                 r.Config.setTriggerMode(
                     if (rfid) ENUM_TRIGGER_MODE.RFID_MODE else ENUM_TRIGGER_MODE.BARCODE_MODE, true
                 )
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 // sem RFID: segue só com código de barras
             }
         }
@@ -101,7 +104,7 @@ object Rfid : RfidEventsListener {
                 val config = r.Config.Antennas.getAntennaRfConfig(1)
                 config.setTransmitPowerIndex((niveis.size - 1) * percentual / 100)
                 r.Config.Antennas.setAntennaRfConfig(1, config)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
             }
         }
     }
@@ -111,7 +114,7 @@ object Rfid : RfidEventsListener {
             leitor?.Events?.removeEventsListener(this)
             leitor?.disconnect()
             readers?.Dispose()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
         }
         leitor = null
         readers = null
@@ -121,12 +124,22 @@ object Rfid : RfidEventsListener {
 
     /** Chegaram tags lidas: pega o EPC de cada uma e repassa para a tela. */
     override fun eventReadNotify(e: RfidReadEvents?) {
-        val tags = leitor?.Actions?.getReadTags(100) ?: return
-        for (tag in tags) aoLerTag?.invoke(tag.tagID)
+        try {
+            val tags = leitor?.Actions?.getReadTags(100) ?: return
+            for (tag in tags) aoLerTag?.invoke(tag.tagID)
+        } catch (ex: Throwable) {
+        }
     }
 
     /** Gatilho apertado -> começa a ler; solto -> para. */
     override fun eventStatusNotify(e: RfidStatusEvents?) {
+        try {
+            tratarGatilho(e)
+        } catch (ex: Throwable) {
+        }
+    }
+
+    private fun tratarGatilho(e: RfidStatusEvents?) {
         val dados = e?.StatusEventData ?: return
         if (dados.statusEventType != STATUS_EVENT_TYPE.HANDHELD_TRIGGER_EVENT) return
         val apertou = dados.HandheldTriggerEventData.handheldEvent ==
@@ -134,7 +147,7 @@ object Rfid : RfidEventsListener {
         thread {
             try {
                 if (apertou) leitor?.Actions?.Inventory?.perform() else leitor?.Actions?.Inventory?.stop()
-            } catch (ex: Exception) {
+            } catch (ex: Throwable) {
             }
         }
     }

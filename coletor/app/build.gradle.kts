@@ -11,8 +11,8 @@ android {
         applicationId = "br.curso.wms"
         minSdk = 26          // MC3300R/MC3390R: Android 8.1 ou superior
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
     }
 
     compileOptions {

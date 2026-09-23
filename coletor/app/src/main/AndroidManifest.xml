@@ -5,6 +5,9 @@
     <!-- Acesso à rede Wi-Fi para falar com o servidor do PC -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- O SDK RFID da Zebra usa Bluetooth internamente (Android 12+ pede esta permissão) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <!-- usesCleartextTraffic: o servidor do curso usa http (sem https) na rede local -->
     <application
         android:label="@string/app_name"

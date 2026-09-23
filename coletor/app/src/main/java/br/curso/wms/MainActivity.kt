@@ -1,13 +1,20 @@
 package br.curso.wms
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Looper
 import android.text.InputType
+import android.util.Log
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -39,9 +46,16 @@ class MainActivity : Activity() {
         window.statusBarColor = Color.BLACK   // hora, Wi-Fi e bateria do Android em branco
 
         prefs = getSharedPreferences("config", MODE_PRIVATE)
+        registrarErros()
         Servidor.url = prefs.getString("servidor", Servidor.url)!!
 
-        web = WebView(this)
+        web = try {
+            WebView(this)
+        } catch (e: Throwable) {
+            // Aparelho sem o componente "Android System WebView" (ou desativado)
+            mostrarErro("Não foi possível abrir a tela (WebView)", textoDoErro(e))
+            return
+        }
         setContentView(web)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
@@ -72,9 +86,47 @@ class MainActivity : Activity() {
 
         // Primeira vez: pergunta o endereço do servidor
         if (prefs.contains("servidor")) abrirTela() else configurarServidor()
+
+        // O app fechou da última vez? Mostra o motivo (para corrigir)
+        prefs.getString("ultimoErro", null)?.let { erro ->
+            prefs.edit().remove("ultimoErro").apply()
+            mostrarErro("O app fechou da última vez", erro)
+        }
+    }
+
+    // ============================================================ erros
+
+    /**
+     * Qualquer erro não tratado fica gravado e aparece na próxima abertura.
+     * Erro em segundo plano (ex.: dentro do SDK RFID) não fecha o app: vira mensagem na tela.
+     */
+    private fun registrarErros() {
+        val padrao = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            val texto = "[${t.name}] " + textoDoErro(e)
+            try { prefs.edit().putString("ultimoErro", texto).commit() } catch (x: Throwable) {}
+            if (t === Looper.getMainLooper().thread) padrao?.uncaughtException(t, e)
+            else chamarTela("statusRfid", "Erro: ${e.javaClass.simpleName}: ${e.message}")
+        }
+    }
+
+    private fun textoDoErro(e: Throwable) =
+        Log.getStackTraceString(e).lines().take(30).joinToString("\n")
+
+    private fun mostrarErro(titulo: String, texto: String) {
+        AlertDialog.Builder(this)
+            .setTitle(titulo)
+            .setMessage(texto)
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Copiar") { _, _ ->
+                val area = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                area.setPrimaryClip(ClipData.newPlainText("erro", texto))
+            }
+            .show()
     }
 
     private fun abrirTela() {
+        if (!::web.isInitialized) return
         web.loadUrl(Servidor.url.trimEnd('/') + "/m")
     }
 
@@ -82,8 +134,26 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        conectarRfid()
+    }
+
+    private fun conectarRfid() {
+        // Android 12+: o SDK da Zebra precisa da permissão de Bluetooth (igual ao app de exemplo da Zebra)
+        if (Build.VERSION.SDK_INT >= 31 &&
+            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), PEDIDO_BLUETOOTH)
+            return
+        }
         Rfid.aoLerTag = { epc -> chamarTela("leituraRfid", epc) }
         Rfid.conectar(applicationContext) { msg -> chamarTela("statusRfid", msg) }
+    }
+
+    override fun onRequestPermissionsResult(codigo: Int, permissoes: Array<out String>, resultados: IntArray) {
+        super.onRequestPermissionsResult(codigo, permissoes, resultados)
+        if (codigo != PEDIDO_BLUETOOTH) return
+        if (resultados.firstOrNull() == PackageManager.PERMISSION_GRANTED) conectarRfid()
+        else chamarTela("statusRfid", "RFID indisponível: permissão de Bluetooth negada")
     }
 
     /** Em segundo plano o app solta o leitor (assim o 123RFID e outros apps conseguem usar). */
@@ -96,7 +166,7 @@ class MainActivity : Activity() {
     /** Chama uma função JavaScript da página com um texto (ex.: leituraRfid("E280...")). */
     private fun chamarTela(funcao: String, texto: String) {
         val js = "window.$funcao && window.$funcao(${JSONObject.quote(texto)})"
-        runOnUiThread { web.evaluateJavascript(js, null) }
+        runOnUiThread { if (::web.isInitialized) web.evaluateJavascript(js, null) }
     }
 
     /** Métodos que a página chama: ColetorApp.gatilhoRfid(true), ColetorApp.potencia(30)... */
@@ -159,11 +229,15 @@ class MainActivity : Activity() {
     /** Voltar do Android: volta de tela dentro da página; no menu, sai do app. */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (web.canGoBack()) web.goBack() else super.onBackPressed()
+        if (::web.isInitialized && web.canGoBack()) web.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {
-        web.destroy()
+        if (::web.isInitialized) web.destroy()
         super.onDestroy()
+    }
+
+    companion object {
+        private const val PEDIDO_BLUETOOTH = 1
     }
 }
