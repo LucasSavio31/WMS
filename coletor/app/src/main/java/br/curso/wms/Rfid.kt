@@ -4,11 +4,14 @@ import android.content.Context
 import com.zebra.rfid.api3.ENUM_TRANSPORT
 import com.zebra.rfid.api3.ENUM_TRIGGER_MODE
 import com.zebra.rfid.api3.HANDHELD_TRIGGER_EVENT_TYPE
+import com.zebra.rfid.api3.INVENTORY_STATE
 import com.zebra.rfid.api3.RFIDReader
 import com.zebra.rfid.api3.Readers
 import com.zebra.rfid.api3.RfidEventsListener
 import com.zebra.rfid.api3.RfidReadEvents
 import com.zebra.rfid.api3.RfidStatusEvents
+import com.zebra.rfid.api3.SESSION
+import com.zebra.rfid.api3.SL_FLAG
 import com.zebra.rfid.api3.START_TRIGGER_TYPE
 import com.zebra.rfid.api3.STATUS_EVENT_TYPE
 import com.zebra.rfid.api3.STOP_TRIGGER_TYPE
@@ -54,32 +57,49 @@ object Rfid : RfidEventsListener {
 
     val conectado get() = leitor?.isConnected == true
 
+    /**
+     * Conecta igual ao app de exemplo oficial da Zebra (mesmo SDK do 123RFID):
+     * primeiro pelo serviço USB (leitor interno do MC3300x), depois pelo serial
+     * (MC3300R mais antigo). A mensagem diz qual funcionou.
+     */
     fun conectar(context: Context, aoTerminar: (String) -> Unit) {
         if (conectado) return aoTerminar("RFID conectado")
         thread {
-            aoTerminar(
+            val falhas = mutableListOf<String>()
+            for ((transporte, nome) in listOf(ENUM_TRANSPORT.SERVICE_USB to "USB", ENUM_TRANSPORT.SERVICE_SERIAL to "serial")) {
                 try {
-                    // SERVICE_SERIAL = leitor interno do MC33xxR
-                    readers = Readers(context, ENUM_TRANSPORT.SERVICE_SERIAL)
-                    val dispositivos = readers!!.GetAvailableRFIDReaderList()
-                    if (dispositivos.isNullOrEmpty()) throw Exception("nenhum leitor encontrado")
-                    leitor = dispositivos[0].rfidReader
-                    leitor!!.connect()
-                    configurar(leitor!!)
-                    "RFID conectado: " + dispositivos[0].name
+                    val r = Readers(context, transporte)
+                    val dispositivos = r.GetAvailableRFIDReaderList()
+                    if (dispositivos.isNullOrEmpty()) {
+                        r.Dispose()
+                        falhas.add("$nome: nenhum leitor")
+                        continue
+                    }
+                    val l = dispositivos[0].rfidReader
+                    if (!l.isConnected) l.connect()
+                    readers = r
+                    leitor = l
+                    configurar(l)
+                    return@thread aoTerminar("RFID conectado: ${dispositivos[0].name} ($nome)")
                 } catch (e: Throwable) {
-                    "RFID indisponível (${e.javaClass.simpleName}: ${e.message})"
+                    falhas.add("$nome: ${e.javaClass.simpleName} ${e.message ?: ""}".trim())
+                    desconectar()
                 }
-            )
+            }
+            aoTerminar("RFID indisponível (" + falhas.joinToString("; ") + ")")
         }
     }
 
+    /** Mesma configuração do exemplo da Zebra. */
     private fun configurar(r: RFIDReader) {
         // Receber eventos do gatilho e de tags lidas
         r.Events.addEventsListener(this)
         r.Events.setHandheldEvent(true)
         r.Events.setTagReadEvent(true)
         r.Events.setAttachTagDataWithReadEvent(false)
+
+        // Gatilho do RFID (sem acender o leitor de código de barras)
+        r.Config.setTriggerMode(ENUM_TRIGGER_MODE.RFID_MODE, true)
 
         // Leitura começa e para quando mandarmos (perform/stop), não sozinha
         val gatilho = TriggerInfo()
@@ -88,7 +108,30 @@ object Rfid : RfidEventsListener {
         r.Config.setStartTrigger(gatilho.StartTrigger)
         r.Config.setStopTrigger(gatilho.StopTrigger)
 
-        usarGatilhoParaRfid(true)
+        try {
+            // Antena: potência máxima e modo de RF padrão
+            val config = r.Config.Antennas.getAntennaRfConfig(1)
+            config.setTransmitPowerIndex(r.ReaderCapabilities.transmitPowerLevelValues.size - 1)
+            config.setrfModeTableIndex(0)
+            config.setTari(0)
+            r.Config.Antennas.setAntennaRfConfig(1, config)
+
+            // Sessão S1, estado A, todas as tags
+            val singulacao = r.Config.Antennas.getSingulationControl(1)
+            singulacao.setSession(SESSION.SESSION_S1)
+            singulacao.Action.setInventoryState(INVENTORY_STATE.INVENTORY_STATE_A)
+            singulacao.Action.setSLFlag(SL_FLAG.SL_ALL)
+            r.Config.Antennas.setSingulationControl(1, singulacao)
+        } catch (e: Throwable) {
+            avisar("não foi possível configurar a antena", e)
+        }
+
+        // Tira filtros que outro app (ex.: 123RFID) tenha deixado gravados no leitor
+        try {
+            r.Actions.PreFilters.deleteAll()
+        } catch (e: Throwable) {
+            avisar("não foi possível limpar os filtros", e)
+        }
     }
 
     /**
