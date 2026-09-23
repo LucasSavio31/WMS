@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -50,6 +51,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.BLACK   // hora, Wi-Fi e bateria do Android em branco
+        volumeControlStream = AudioManager.STREAM_MUSIC   // botões de volume ajustam o volume dos bipes
 
         prefs = getSharedPreferences("config", MODE_PRIVATE)
         registrarErros()
@@ -235,6 +237,25 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun servidor() = runOnUiThread { configurarServidor() }
+
+        /** Tela Config: procurar o servidor na rede Wi-Fi. */
+        @JavascriptInterface
+        fun procurarServidor() = runOnUiThread { this@MainActivity.procurarServidor() }
+
+        /** Tela Config: volume de mídia do coletor (é o volume dos bipes), de 0 a 100%. */
+        @JavascriptInterface
+        fun volume(percentual: Int) {
+            val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+            val maximo = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, (maximo * percentual.coerceIn(0, 100) + 50) / 100, 0)
+        }
+
+        @JavascriptInterface
+        fun volumeAtual(): Int {
+            val audio = getSystemService(AUDIO_SERVICE) as AudioManager
+            val maximo = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            return audio.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / maximo
+        }
     }
 
     // ============================================================ servidor

@@ -228,6 +228,13 @@ async function api(metodo, url, corpo) {
 }
 
 // ---- retorno para o operador: mensagem, bipe e vibração
+// Configurações do coletor (tela Config), guardadas no próprio aparelho
+const cfg = { volume: 100, potencia: 100 };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem("coletor.cfg") || "{}")); } catch {}
+function salvarCfg() { try { localStorage.setItem("coletor.cfg", JSON.stringify(cfg)); } catch {} }
+// No app, o volume é o volume de mídia do próprio coletor; no navegador, o volume do bipe.
+const ganhoBipe = () => (window.ColetorApp?.volume ? 1 : cfg.volume / 100);
+
 let audio;
 function bipe(tipo) {
   try {
@@ -235,7 +242,7 @@ function bipe(tipo) {
     const tons = tipo === "erro" ? [[330, 0], [260, 0.16]] : tipo === "alerta" ? [[880, 0], [880, 0.14]] : [[1800, 0]];
     tons.forEach(([f, atraso]) => {
       const o = audio.createOscillator(), v = audio.createGain();
-      o.type = "square"; o.frequency.value = f; v.gain.value = 1;   // volume máximo
+      o.type = "square"; o.frequency.value = f; v.gain.value = ganhoBipe();
       o.connect(v).connect(audio.destination);
       o.start(audio.currentTime + atraso); o.stop(audio.currentTime + atraso + 0.12);
     });
@@ -552,8 +559,7 @@ function configurarServidor() {
 }
 $("btConfig").addEventListener("click", (ev) => {
   ev.stopPropagation();
-  if (window.ColetorApp) window.ColetorApp.servidor();   // popup nativo do app (guarda o endereço)
-  else configurarServidor();
+  location.hash = "config";
 });
 $("dlgCancelar").addEventListener("click", () => $("dlgServidor").close());
 $("formServidor").addEventListener("submit", async (ev) => {
@@ -607,7 +613,7 @@ function abrir(nome) {
   $("voltar").style.display = nome === "menu" ? "none" : "";   // no menu o logo encosta na esquerda
   msg("");
   definirGatilho(telas[nome].gatilho || "rfid");
-  definirPotencia(100);   // antena sempre na potência máxima (lê todas as etiquetas ao alcance)
+  definirPotencia(cfg.potencia);   // potência da antena escolhida em Config (padrão 100%)
   telas[nome].abrir();
   focarLeitura();
 }
@@ -629,7 +635,7 @@ telas.menu = {
     tela.innerHTML = `<div class="grade-menu">
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
-      ${item("localizar", "🎯", "Localizar etiqueta")}
+      ${item("localizar", "🎯", "Localizar etiqueta")}${item("config", "⚙️", "Config")}
     </div>
     <p class="fraco" style="text-align:center;margin-top:14px" id="infoServidor"></p>`;
     try {
@@ -645,34 +651,25 @@ telas.menu = {
 
 // ======================================================================= ENTRADA AVULSA (sem ordem)
 telas.avulsa = {
-  titulo: "Entrada avulsa",
+  titulo: "Entrada",
   abrir() { this.produto = null; this.tags = new Map(); this.desenhar(); },
   desenhar() {
     const p = this.produto;
-    definirGatilho(p ? "rfid" : "barras");   // primeiro bipa o produto, depois lê as etiquetas
-    tela.innerHTML = cartaoProduto(p) + (p ? `
+    definirGatilho(p ? "rfid" : "barras");   // escolhe o produto (lista ou código de barras), depois lê as etiquetas
+    const ativos = produtos.filter((x) => x.ativo);
+    tela.innerHTML = p ? cartaoProduto(p) + `
       <div class="card">
-        <div class="duas">
-          <label class="campo"><span>Lote</span><input id="enLote" list="enLotes" autocapitalize="characters" enterkeyhint="next" autocomplete="off" style="text-transform:uppercase"></label>
-          <label class="campo"><span>Validade</span><input id="enValidade" type="date"></label>
-        </div>
-        <datalist id="enLotes">${p.lotes.map((l) => `<option value="${esc(l.lote)}">`).join("")}</datalist>
-        <div class="duas">
-          <label class="campo"><span>Endereço</span><select id="enEndereco">${opcoesEndereco(docaId())}</select></label>
-          <label class="campo"><span>Nota fiscal</span><input id="enDoc"></label>
-        </div>
-        <label class="campo"><span>Quantidade (sem RFID)</span><input id="enQtd" inputmode="decimal" enterkeyhint="done" data-enter="registrar" placeholder="ou leia as etiquetas RFID"></label>
+        <label class="campo"><span>Quantidade (produto sem etiqueta)</span><input id="enQtd" inputmode="decimal" enterkeyhint="done" data-enter="registrar" placeholder="ou leia as etiquetas RFID"></label>
       </div>
       <div class="card"><h2>Etiquetas RFID <span class="dir"><span class="contador" id="enCont">0</span></span></h2>
         <ul class="lista" id="enTags"></ul></div>
-      <div class="botoes"><button class="b" data-acao="limpar">Limpar</button><button class="b primario" data-acao="registrar" id="enBotao">Registrar entrada</button></div>` : "");
-    if (p) {
-      $("enLote").addEventListener("change", () => {
-        const l = p.lotes.find((x) => x.lote === $("enLote").value.trim().toUpperCase());
-        if (l) { if (l.validade) $("enValidade").value = l.validade; $("enEndereco").value = l.endereco_id; msg(`Lote ${l.lote} já existe: soma no saldo (${num(l.quantidade)})`, "info", false); }
-      });
-      this.desenharTags();
-    }
+      <div class="botoes"><button class="b" data-acao="limpar">Limpar</button><button class="b primario" data-acao="registrar" id="enBotao">Registrar entrada</button></div>`
+      : `<div class="card"><h2>Produto</h2>
+          <select id="enProduto"><option value="">— escolha o produto —</option>
+            ${ativos.map((x) => `<option value="${esc(x.sku)}">${esc(x.sku)} · ${esc(x.descricao)}</option>`).join("")}</select>
+          <p class="fraco" style="margin:8px 0 0">Ou bipe o código de barras do produto. Depois aperte o gatilho perto das etiquetas.</p></div>`;
+    if (p) this.desenharTags();
+    else $("enProduto").addEventListener("change", () => { if ($("enProduto").value) this.codigo($("enProduto").value); });
   },
   desenharTags() {
     const novas = [...this.tags.values()].filter((t) => t.ok).length;
@@ -689,12 +686,15 @@ telas.avulsa = {
       const p = await buscarProduto(c);
       if (!p.ativo) throw new Error(`Produto ${p.sku} está inativo`);
       this.produto = p; this.tags = new Map();
-      this.desenhar(); msg(`${p.sku} · ${p.descricao}`, "ok");
-      digitar($("enLote"));
+      this.desenhar(); msg(`${p.sku} · ${p.descricao}: aperte o gatilho perto das etiquetas`, "ok");
     });
   },
   async rfid(epc) {
-    if (!this.produto) return msg("Bipe primeiro o código de barras do produto", "alerta");
+    if (!this.produto) {
+      const ativos = produtos.filter((x) => x.ativo);
+      if (ativos.length !== 1) return msg("Escolha o produto na lista (ou bipe o código de barras)", "info");
+      await this.codigo(ativos[0].sku);   // só existe um produto: já escolhe
+    }
     if (this.tags.has(epc)) return;
     const t = { epc, ok: true, info: "nova" };
     this.tags.set(epc, t); this.desenharTags(); bipe("ok");
@@ -705,7 +705,6 @@ telas.avulsa = {
     } catch { /* tag nunca usada: nova */ }
     if (telaAtual === "avulsa") this.desenharTags();
   },
-  endereco(e) { if (this.produto) { $("enEndereco").value = e.id; msg("Endereço " + e.codigo, "info"); } },
   removerTag(_b, epc) { this.tags.delete(epc); this.desenharTags(); },
   trocarProduto() { if (this.tags.size) return msg("Envie ou limpe as etiquetas antes", "alerta"); this.abrir(); },
   limpar() { this.abrir(); msg(""); },
@@ -716,9 +715,8 @@ telas.avulsa = {
     if (!epcs.length && !(qtd > 0)) return msg("Leia as etiquetas RFID ou informe a quantidade", "alerta");
     await executar(b, async () => {
       const r = await api("POST", "/api/entradas", {
-        produto_id: this.produto.id, lote: $("enLote").value, validade: $("enValidade").value || null,
-        quantidade: epcs.length ? 0 : qtd, epcs, endereco_id: Number($("enEndereco").value) || null,
-        documento: $("enDoc").value, origem: "COLETOR", meio: epcs.length ? "RFID" : "BARRAS",
+        produto_id: this.produto.id, quantidade: epcs.length ? 0 : qtd, epcs,
+        origem: "COLETOR", meio: epcs.length ? "RFID" : "BARRAS",
       });
       this.abrir();
       msg(`OK: entrada de ${num(r.quantidade)} ${r.sku}${r.lote !== "SEM-LOTE" ? "\nLote " + esc(r.lote) + " ·" : "\n"} saldo ${num(r.saldo)}` +
@@ -1107,7 +1105,7 @@ telas.localizar = {
       try {
         audio = audio || new AudioContext();
         const o = audio.createOscillator(), g = audio.createGain();
-        o.type = "square"; o.frequency.value = 600 + 12 * this.valor; g.gain.value = 1;   // volume máximo
+        o.type = "square"; o.frequency.value = 600 + 12 * this.valor; g.gain.value = ganhoBipe();
         o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.05);
       } catch {}
     }
@@ -1119,6 +1117,47 @@ telas.localizar = {
 };
 window.proximidadeRfid = (v) => telas.localizar.proximidade(Number(v));
 setInterval(() => telas.localizar.tique(), 50);
+
+// ======================================================================= CONFIG
+telas.config = {
+  titulo: "Config",
+  abrir() {
+    let volume = cfg.volume;
+    try { if (window.ColetorApp?.volumeAtual) volume = window.ColetorApp.volumeAtual(); } catch {}
+    tela.innerHTML = `<div class="card"><h2>Volume do bipe <span class="dir"><b id="cfVolTxt">${volume}%</b></span></h2>
+        <input type="range" id="cfVolume" min="0" max="100" step="10" value="${volume}" style="padding:0">
+        <div class="botoes" style="margin-top:8px"><button class="b" data-acao="testar">🔊 Testar bipe</button></div>
+        ${app ? '<p class="fraco" style="margin:6px 0 0">Muda o volume de mídia do coletor.</p>' : ""}</div>
+      <div class="card"><h2>Potência da antena RFID <span class="dir"><b id="cfPotTxt">${cfg.potencia}%</b></span></h2>
+        <input type="range" id="cfPotencia" min="10" max="100" step="10" value="${cfg.potencia}" style="padding:0">
+        <p class="fraco" style="margin:6px 0 0">100% lê mais longe. Menos potência lê só o que está perto (evita pegar mercadoria vizinha).</p></div>
+      <div class="card"><h2>Servidor</h2>
+        <div>Conectado a <b class="mono">${esc(location.origin)}</b></div>
+        <div class="botoes" style="margin-top:8px"><button class="b primario" data-acao="procurar">📡 Procurar servidor na rede</button></div>
+        <div class="botoes"><button class="b" data-acao="digitar">✏️ Digitar endereço</button></div></div>`;
+    $("cfVolume").addEventListener("input", () => {
+      cfg.volume = Number($("cfVolume").value); salvarCfg();
+      $("cfVolTxt").textContent = cfg.volume + "%";
+      try { window.ColetorApp?.volume?.(cfg.volume); } catch {}
+    });
+    $("cfVolume").addEventListener("change", () => bipe("ok"));
+    $("cfPotencia").addEventListener("input", () => {
+      cfg.potencia = Number($("cfPotencia").value); salvarCfg();
+      $("cfPotTxt").textContent = cfg.potencia + "%";
+      definirPotencia(cfg.potencia);
+    });
+  },
+  testar() { bipe("ok"); },
+  procurar() {
+    if (window.ColetorApp?.procurarServidor) window.ColetorApp.procurarServidor();
+    else if (app) msg("Atualize o ColetorWMS.apk para procurar o servidor", "info");
+    else msg("A busca na rede é feita pelo app do coletor", "info");
+  },
+  digitar() {
+    if (window.ColetorApp) window.ColetorApp.servidor();   // popup nativo do app (guarda o endereço)
+    else configurarServidor();
+  },
+};
 
 // ======================================================================= início
 (async () => {
