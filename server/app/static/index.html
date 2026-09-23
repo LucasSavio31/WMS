@@ -30,6 +30,7 @@
   /* ---------- layout ---------- */
   .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
   aside { background: var(--lateral); color: var(--lateral-texto); padding: 14px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .logo-senai { display: block; width: 100%; max-width: 196px; height: auto; margin: 2px auto 10px; border-radius: 4px; }
   .marca { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 17px; padding: 4px 8px 16px; }
   .marca svg { flex: none; }
   .marca small { display: block; font-weight: 400; font-size: 11px; color: var(--lateral-texto); }
@@ -176,6 +177,7 @@
 <div class="app">
   <!-- ======================================================= MENU LATERAL -->
   <aside>
+    <img src="/static/senai.png" alt="SENAI" class="logo-senai">
     <div class="marca">
       <svg width="30" height="30" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1f6feb"/><path d="M8 12l8-4 8 4v10l-8 4-8-4z M8 12l8 4 8-4 M16 16v10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
       <div>Mini WMS</div>

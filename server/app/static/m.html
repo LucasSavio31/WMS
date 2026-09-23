@@ -623,7 +623,8 @@ telas.menu = {
   titulo: "WMS Coletor",
   async abrir() {
     const item = (hash, ic, nome, id = "") => `<a class="tile" href="#${hash}" style="text-decoration:none"><span class="ic">${ic}</span>${nome}<span class="badge" id="${id}"></span></a>`;
-    tela.innerHTML = `<div class="grade-menu">
+    tela.innerHTML = `<img src="/static/senai.png" alt="SENAI" style="display:block;width:70%;max-width:260px;margin:6px auto 12px;border-radius:4px">
+    <div class="grade-menu">
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
       ${item("localizar", "🎯", "Localizar etiqueta")}
