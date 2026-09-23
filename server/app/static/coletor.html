@@ -130,6 +130,7 @@ window.ColetorAppSimulado = {
   gatilhoRfid(rfid) { estado.rfid = !!rfid; mostrarEstado(); },
   potencia(pct) { estado.potencia = pct; mostrarEstado(); },
   rfidConectado() { return true; },
+  lerRfid(ms) { apertarGatilhoRfid(); setTimeout(soltarGatilho, ms); },
   servidor() {},
 };
 function mostrarEstado() {
@@ -197,10 +198,8 @@ function apertarGatilho() {
   if (lendo) return;
   $("gatilho").classList.add("apertado");
   if (estado.rfid) {
-    $("led").className = "led lendo";
-    // Inventory.perform(): vai "vendo" as etiquetas ao alcance, uma a cada ~120 ms
-    const fila = tagsAmbiente.filter((t) => t.marcada);
-    lendo = setInterval(() => { const t = fila.shift(); if (t) tela().leituraRfid?.(t.epc); }, 120);
+    $("gatilho").classList.remove("apertado");
+    apertarGatilhoRfid();
   } else {
     lendo = "barras";
     if (!codigoEscolhido) return;
@@ -216,9 +215,25 @@ function apertarGatilho() {
     campo.dispatchEvent(new janela.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   }
 }
+let lidasNaLeitura = 0;
+function apertarGatilhoRfid() {
+  if (lendo) return;
+  $("gatilho").classList.add("apertado");
+  $("led").className = "led lendo";
+  tela().gatilhoRfidEvento?.("1");
+  lidasNaLeitura = 0;
+  // Inventory.perform(): vai "vendo" as etiquetas ao alcance, uma a cada ~120 ms
+  const fila = tagsAmbiente.filter((t) => t.marcada);
+  lendo = setInterval(() => { const t = fila.shift(); if (t) { lidasNaLeitura++; tela().leituraRfid?.(t.epc); } }, 120);
+}
 function soltarGatilho() {
   if (!lendo) return;
-  if (typeof lendo === "number") clearInterval(lendo);   // Inventory.stop()
+  if (typeof lendo === "number") {   // Inventory.stop()
+    clearInterval(lendo);
+    tela().gatilhoRfidEvento?.("0");
+    const n = lidasNaLeitura;
+    setTimeout(() => tela().fimLeituraRfid?.(String(n)), 300);
+  }
   lendo = null;
   $("gatilho").classList.remove("apertado");
   setTimeout(() => { if (!lendo) $("led").className = "led"; }, 200);

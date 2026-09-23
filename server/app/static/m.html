@@ -275,11 +275,21 @@ if (app) {
 /** O app avisa quando o gatilho é apertado/solto em modo RFID (mostra "Lendo…" na chave). */
 window.gatilhoRfidEvento = (apertado) => {
   const lendo = apertado === "1";
+  if (lendo) recebidasNaLeitura = 0;
   $("modo").textContent = lendo ? "📡 Lendo…" : modoGatilho === "rfid" ? "📡 RFID" : "▮▮ Código";
   $("modo").classList.toggle("lendo", lendo);
 };
+/** Fim de cada leitura RFID: quantas etiquetas o leitor viu. */
+// Só avisa quando algo deu errado (no uso normal, a própria etiqueta lida já aparece na tela).
+let recebidasNaLeitura = 0;
+window.fimLeituraRfid = (n) => {
+  n = Number(n);
+  if (n === 0) msg("RFID: o leitor não viu nenhuma etiqueta.\nAproxime o coletor das etiquetas e segure o gatilho por 1–2 s.", "alerta");
+  else if (recebidasNaLeitura === 0) msg(`RFID: o leitor viu ${n} etiqueta(s), mas elas não chegaram à tela.`, "erro");
+};
 /** O app chama a cada etiqueta lida pelo RFID. */
 window.leituraRfid = (epc) => {
+  recebidasNaLeitura++;
   const dado = String(epc).trim().toUpperCase();
   if (!dado) return;
   leitura.placeholder = "Última: " + dado;
@@ -965,7 +975,14 @@ telas.inventario = {
 // ======================================================================= CONSULTA
 telas.consulta = {
   titulo: "Consulta",
-  abrir() { tela.innerHTML = `<div class="dica">Leia uma <b>etiqueta RFID</b>, bipe um <b>produto</b><br>ou a <b>etiqueta de um endereço</b></div><div id="csCorpo"></div>`; },
+  abrir() {
+    tela.innerHTML = `<div class="dica">Leia uma <b>etiqueta RFID</b>, bipe um <b>produto</b><br>ou a <b>etiqueta de um endereço</b></div>
+      ${app ? `<div class="botoes" style="margin-top:8px"><button class="b" data-acao="lerRfid" id="csLer">📡 Ler RFID por 3 s (sem gatilho)</button></div>` : ""}
+      <div id="csCorpo"></div>`;
+  },
+  lerRfid() {
+    try { app.lerRfid(3000); msg("Lendo RFID por 3 s…", "info", false); } catch (e) { msg("App sem leitura de teste: atualize o ColetorWMS.apk", "erro"); }
+  },
   async rfid(epc) {
     await executar(null, async () => {
       const t = await api("GET", "/api/tags/" + encodeURIComponent(epc));

@@ -41,6 +41,12 @@ object Rfid : RfidEventsListener {
     /** Gatilho apertado (true) / solto (false) em modo RFID. */
     var aoGatilho: ((Boolean) -> Unit)? = null
 
+    /** Fim de cada leitura: quantas etiquetas o leitor viu (ajuda a achar problemas). */
+    var aoTerminarLeitura: ((Int) -> Unit)? = null
+
+    @Volatile
+    private var lidasNaLeitura = 0
+
     /** Problemas do leitor viram mensagem na tela (em vez de sumir em silêncio). */
     var aoAvisar: ((String) -> Unit)? = null
 
@@ -135,6 +141,7 @@ object Rfid : RfidEventsListener {
     override fun eventReadNotify(e: RfidReadEvents?) {
         try {
             val tags = leitor?.Actions?.getReadTags(100) ?: return
+            lidasNaLeitura += tags.size
             for (tag in tags) aoLerTag?.invoke(tag.tagID)
         } catch (ex: Throwable) {
         }
@@ -156,9 +163,39 @@ object Rfid : RfidEventsListener {
         aoGatilho?.invoke(apertou)
         thread {
             try {
-                if (apertou) leitor?.Actions?.Inventory?.perform() else leitor?.Actions?.Inventory?.stop()
+                if (apertou) iniciarLeitura() else pararLeitura()
             } catch (ex: Throwable) {
                 avisar(if (apertou) "não começou a leitura" else "não parou a leitura", ex)
+            }
+        }
+    }
+
+    private fun iniciarLeitura() {
+        lidasNaLeitura = 0
+        leitor?.Actions?.Inventory?.perform()
+    }
+
+    private fun pararLeitura() {
+        leitor?.Actions?.Inventory?.stop()
+        Thread.sleep(300)   // últimas etiquetas ainda chegando
+        aoTerminarLeitura?.invoke(lidasNaLeitura)
+    }
+
+    /** Lê por alguns segundos sem usar o gatilho (botão "Ler 3 s" da tela). */
+    fun lerPor(ms: Long) {
+        if (leitor == null) {
+            aoAvisar?.invoke("RFID: leitor não conectado")
+            return
+        }
+        thread {
+            try {
+                aoGatilho?.invoke(true)
+                iniciarLeitura()
+                Thread.sleep(ms)
+                aoGatilho?.invoke(false)
+                pararLeitura()
+            } catch (ex: Throwable) {
+                avisar("a leitura de teste falhou", ex)
             }
         }
     }

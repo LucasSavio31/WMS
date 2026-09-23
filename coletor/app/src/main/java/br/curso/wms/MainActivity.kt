@@ -149,6 +149,7 @@ class MainActivity : Activity() {
         Rfid.aoLerTag = { epc -> chamarTela("leituraRfid", epc) }
         Rfid.aoGatilho = { apertou -> chamarTela("gatilhoRfidEvento", if (apertou) "1" else "0") }
         Rfid.aoAvisar = { msg -> chamarTela("statusRfid", msg) }
+        Rfid.aoTerminarLeitura = { n -> chamarTela("fimLeituraRfid", n.toString()) }
         Rfid.conectar(applicationContext) { msg -> chamarTela("statusRfid", msg) }
     }
 
@@ -164,6 +165,7 @@ class MainActivity : Activity() {
         Rfid.aoLerTag = null
         Rfid.aoGatilho = null
         Rfid.aoAvisar = null
+        Rfid.aoTerminarLeitura = null
         Rfid.desconectar()
         leitorDataWedge(true)   // devolve o leitor de código de barras para os outros apps
         super.onStop()
@@ -203,6 +205,9 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun rfidConectado(): Boolean = Rfid.conectado
+
+        @JavascriptInterface
+        fun lerRfid(ms: Int) = Rfid.lerPor(ms.toLong())
 
         @JavascriptInterface
         fun servidor() = runOnUiThread { configurarServidor() }
