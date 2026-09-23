@@ -253,13 +253,12 @@
                 <p class="ajuda">Adicione os produtos que vão chegar. O número da ordem é gerado sozinho.</p>
                 <div class="campos">
                   <label class="campo largo"><span>Produto</span><select id="orProduto" data-produtos="ativos"></select></label>
-                  <label class="campo"><span>Lote (opcional)</span><input id="orLote" style="text-transform:uppercase"></label>
                   <label class="campo"><span>Validade</span><input id="orValidade" type="date"></label>
                   <label class="campo"><span>Quantidade</span><input id="orQtd" type="number" min="0" step="any"></label>
                 </div>
                 <div class="botoes"><button type="button" id="orAdicionar">+ Adicionar item</button></div>
                 <div class="tabela" style="margin-top:10px"><table>
-                  <thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Qtd</th><th></th></tr></thead>
+                  <thead><tr><th>Produto</th><th>Validade</th><th class="num">Qtd</th><th></th></tr></thead>
                   <tbody id="tabOrdemNova"></tbody></table></div>
                 <div class="botoes">
                   <button class="primario" type="submit">Criar ordem</button>
@@ -972,12 +971,12 @@ async function carregarRecebimento() {
 let itensNovaOrdem = [], ordens = [], ordemAtual = null, leiturasVistas = null;
 $("orProduto").addEventListener("change", () => ajustarPasso($("orQtd"), $("orProduto").value));
 function adicionarItemOrdem() {
-  const p = produtoPorId($("orProduto").value), qtd = Number($("orQtd").value), lote = $("orLote").value.trim().toUpperCase();
+  const p = produtoPorId($("orProduto").value), qtd = Number($("orQtd").value), lote = "";
   if (!p) return toast("Escolha o produto do item", "erro");
   if (!(qtd > 0)) return toast("Informe a quantidade esperada", "erro");
-  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || "SEM-LOTE"))) return toast(`${p.sku} lote ${lote} já está na lista`, "erro");
+  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || "SEM-LOTE"))) return toast(`${p.sku} já está na lista`, "erro");
   itensNovaOrdem.push({ produto_id: p.id, lote: lote || "SEM-LOTE", validade: $("orValidade").value || null, quantidade: qtd });
-  ["orProduto", "orLote", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
+  ["orProduto", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
   desenharItensOrdem();
   $("orProduto").focus();
 }
@@ -986,10 +985,10 @@ $("orQtd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.pr
 function desenharItensOrdem() {
   $("tabOrdemNova").innerHTML = itensNovaOrdem.map((i, n) => {
     const p = produtoPorId(i.produto_id);
-    return `<tr><td>${esc(p.sku)} <span class="fraco">${esc(p.descricao)}</span></td><td>${esc(i.lote)}</td><td>${dataBR(i.validade)}</td>
+    return `<tr><td>${esc(p.sku)} <span class="fraco">${esc(p.descricao)}</span></td><td>${dataBR(i.validade)}</td>
       <td class="num">${num(i.quantidade)} ${esc(p.unidade)}</td>
       <td class="acoes"><button type="button" class="link perigo-texto" onclick="itensNovaOrdem.splice(${n},1);desenharItensOrdem()">remover</button></td></tr>`;
-  }).join("") || vazio(5, "Nenhum item adicionado");
+  }).join("") || vazio(4, "Nenhum item adicionado");
 }
 aoEnviar($("formOrdem"), async () => {
   if (!itensNovaOrdem.length) throw new Error("Adicione pelo menos um item");
