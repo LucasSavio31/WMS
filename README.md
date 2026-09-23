@@ -45,7 +45,7 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 | PC | **Estoque**, **Inventário** (resultado e fechamento) e **Histórico** (com CSV) |
 | Coletor | **Recebimento**: escolhe a ordem e o item, lê as etiquetas (cada uma vai na hora para o servidor) |
 | Coletor | **Entrada** sem ordem: produto, lote, etiquetas RFID ou quantidade |
-| Coletor | **Baixa automática**: cada etiqueta lida é baixada na hora (potência 30%); "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade (FEFO) |
+| Coletor | **Baixa automática**: cada etiqueta lida é baixada na hora (antena a 100%); "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade (FEFO) |
 | Coletor | **Inventário**: inicia no coletor, lê as etiquetas; ao finalizar, etiqueta não lida sai e etiqueta achada volta |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 
@@ -136,7 +136,7 @@ o navegador não faz sozinho:
 - **Gatilho**: é um só para RFID e código de barras. A chave **📡 RFID / ▮▮ Código**, ao lado do campo
   *Leitura*, mostra o que ele lê. Cada tela escolhe sozinha o modo mais provável (ex.: no Recebimento começa
   em código para bipar o produto e passa para RFID depois), e um toque na chave troca.
-- **Potência da antena**: 30% na Baixa (lê só o que está bem perto) e 100% nas outras telas.
+- **Potência da antena**: 100% em todas as telas.
 - Sem barra do Chrome; hora, Wi-Fi e bateria ficam na barra do próprio Android.
 - Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
 

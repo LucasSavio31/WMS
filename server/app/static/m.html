@@ -607,7 +607,7 @@ function abrir(nome) {
   $("voltar").style.display = nome === "menu" ? "none" : "";   // no menu o logo encosta na esquerda
   msg("");
   definirGatilho(telas[nome].gatilho || "rfid");
-  definirPotencia(nome === "baixa" ? 30 : 100);   // na baixa, só o que está bem perto
+  definirPotencia(100);   // antena sempre na potência máxima (lê todas as etiquetas ao alcance)
   telas[nome].abrir();
   focarLeitura();
 }
@@ -846,7 +846,7 @@ telas.entrada = {
 
 // ======================================================================= BAIXA (automática)
 // Cada etiqueta lida é baixada NA HORA. Leu por engano? "desfazer" devolve ao estoque.
-// A potência da antena fica baixa (30%) nesta tela: lê só o que está bem perto.
+// Antena na potência máxima (100%), como na entrada e no inventário.
 telas.baixa = {
   titulo: "Baixa",
   abrir() {
