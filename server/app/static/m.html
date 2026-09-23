@@ -972,7 +972,7 @@ telas.inventario = {
       <div class="card"><h2>Etiquetas <span class="dir fraco">vermelho = diferença</span></h2><ul class="lista">
         ${(d.etiquetas || []).slice(0, 300).map((e) => `<li><div class="info">
             <div class="mono" style="${e.situacao === "OK" ? "" : "color:var(--perigo);font-weight:700"}">${esc(e.epc)}</div>
-            <div class="fraco">${esc(e.sku)} · ${e.situacao === "OK" ? "lida" : e.situacao === "FALTA" ? "falta (não lida)" : "sobra (não estava em estoque)"}</div></div></li>`).join("")
+            <div class="fraco">${e.desconhecida ? "sobra · etiqueta não cadastrada" : esc(e.sku) + " · " + (e.situacao === "OK" ? "lida" : e.situacao === "FALTA" ? "falta (não lida)" : "sobra (não estava em estoque)")}</div></div></li>`).join("")
           || `<li class="vazio">Nenhuma etiqueta</li>`}</ul></div>
       ${this.confirmando ? `<div class="card" style="border-color:var(--alerta)"><h2>Finalizar inventário?</h2>
           <p style="margin:0 0 8px">O estoque passa a ser o que foi lido:<br>
@@ -1003,7 +1003,9 @@ telas.inventario = {
     await executar($("ivFinalizar"), async () => {
       const r = await api("POST", `/api/inventarios/${this.inv.inventario.id}/fechar`);
       await this.abrir();
-      msg(`Inventário finalizado: ${num(r.faltas ?? 0)} falta(s) e ${num(r.sobras ?? 0)} sobra(s) ajustadas`);
+      msg(`Inventário finalizado: ${num(r.faltas ?? 0)} falta(s) e ${num(r.sobras ?? 0)} sobra(s)` +
+        (r.desconhecidas ? `
+${num(r.desconhecidas)} etiqueta(s) não cadastrada(s): dê entrada por uma ordem de recebimento` : ""));
     });
   },
 };

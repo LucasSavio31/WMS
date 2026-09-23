@@ -340,14 +340,22 @@ def test_inventario_por_rfid_e_estorno(api):
     assert "CX" not in conf                                               # sem etiqueta: fora da conta
     assert [(e["epc"], e["situacao"]) for e in d["etiquetas"]] == [("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
     assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
+    # 2 etiquetas que o sistema não conhece: contam como sobra, em vermelho
+    r = api.post(f"/api/inventarios/{inv}/contagens", json={"epcs": ["X9", "X8", "X9"], "origem": "COLETOR", "meio": "RFID"})
+    assert all(t["ok"] for t in r.json()["tags"])
+    d = api.get(f"/api/inventarios/{inv}").json()
+    extra = [c for c in d["confronto"] if c["lote_id"] is None][0]
+    assert (extra["contado"], extra["diferenca"]) == (2, 2)
+    assert [(e["epc"], e["situacao"]) for e in d["etiquetas"][:2]] == [("X8", "SOBRA"), ("X9", "SOBRA")]
     r = api.post(f"/api/inventarios/{inv}/fechar").json()
-    assert (r["faltas"], r["sobras"]) == (1, 1)
+    assert (r["faltas"], r["sobras"], r["desconhecidas"]) == (1, 3, 2)   # sobra: T3 + as 2 não cadastradas
     # fechado: continua mostrando o que foi lido na hora (não o estoque de agora)
     api.post("/api/baixas", json={"epcs": ["T1"]})
     conf = {c["lote"]: c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"]}
     assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
     guardadas = [(e["epc"], e["situacao"]) for e in api.get(f"/api/inventarios/{inv}").json()["etiquetas"]]
-    assert guardadas == [("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
+    assert guardadas == [("X8", "SOBRA"), ("X9", "SOBRA"), ("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
+    assert [c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"] if c["lote_id"] is None][0]["contado"] == 2
     api.post("/api/tags/T1/estornar")
     assert api.get("/api/tags/T4").json()["status"] == "BAIXADA" and api.get("/api/tags/T3").json()["status"] == "ATIVA"
     assert saldo(api, "SEM-LOTE") == 3 and saldo(api, "CX") == 5

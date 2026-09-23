@@ -164,7 +164,7 @@ def limpar_tudo(con, manter_cadastros=False):
 
     Com manter_cadastros, apaga só a movimentação e deixa produtos e endereços.
     """
-    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventario_resultado", "inventario_etiquetas", "inventarios", "recebimento_leituras",
+    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventario_resultado", "inventario_etiquetas", "inventario_desconhecidas", "inventarios", "recebimento_leituras",
                "recebimento_itens", "recebimentos", "movimentos", "tags", "lotes"]
     if not manter_cadastros:
         tabelas += ["produtos", "enderecos"]
@@ -386,6 +386,12 @@ def inventario_aberto(con, inventario_id):
 
 def contar_tag(con, inventario_id, epc, origem="COLETOR"):
     inventario_aberto(con, inventario_id)
+    epc = epc.strip().upper()
+    if not con.execute("SELECT 1 FROM tags WHERE epc=?", (epc,)).fetchone():
+        # não cadastrada: registra como sobra (sem produto)
+        novo = con.execute("INSERT OR IGNORE INTO inventario_desconhecidas (inventario_id, epc, origem, data_hora) VALUES (?,?,?,?)",
+                           (inventario_id, epc, origem, db.agora())).rowcount
+        return {"epc": epc, "sku": None, "lote": None, "repetida": not novo, "desconhecida": True}
     t = buscar_tag(con, epc)
     if con.execute("SELECT 1 FROM contagens WHERE inventario_id=? AND epc=?", (inventario_id, t["epc"])).fetchone():
         return {"epc": t["epc"], "sku": t["sku"], "lote": t["lote"], "repetida": True}
@@ -414,7 +420,18 @@ def so_rfid(con, inventario_id):
                            (inventario_id,)).fetchone()
 
 
+def linha_desconhecidas(con, inventario_id):
+    n = con.execute("SELECT COUNT(*) FROM inventario_desconhecidas WHERE inventario_id=?", (inventario_id,)).fetchone()[0]
+    return [{"lote_id": None, "sku": "NÃO CADASTRADAS", "descricao": "etiquetas lidas que o sistema não conhece",
+             "lote": "", "validade": None, "endereco": None, "sistema": 0, "contado": n, "diferenca": n,
+             "foi_contado": 1}] if n else []
+
+
 def confrontar(con, inventario_id):
+    return confrontar_lotes(con, inventario_id) + linha_desconhecidas(con, inventario_id)
+
+
+def confrontar_lotes(con, inventario_id):
     """Compara o contado (físico) com o sistema, lote a lote.
 
     Inventário por RFID: sistema = etiquetas em estoque do lote; contado =
@@ -464,9 +481,13 @@ def etiquetas_inventario(con, inventario_id):
         f"""SELECT e.epc, e.situacao, NULL AS contagem_id, {campos}
             FROM inventario_etiquetas e JOIN lotes l ON l.id=e.lote_id JOIN produtos p ON p.id=l.produto_id
             WHERE e.inventario_id=? ORDER BY ordem, p.sku, e.epc""", (inventario_id,)))
+    desconhecidas = db.linhas(con.execute(
+        """SELECT epc, 'SOBRA' AS situacao, NULL AS contagem_id, NULL AS lote_id, '' AS sku,
+                  'etiqueta não cadastrada' AS descricao, '' AS lote, 1 AS desconhecida
+           FROM inventario_desconhecidas WHERE inventario_id=? ORDER BY epc""", (inventario_id,)))
     if guardadas or not so_rfid(con, inventario_id):
-        return guardadas
-    return db.linhas(con.execute(
+        return desconhecidas + guardadas if guardadas else guardadas
+    return desconhecidas + db.linhas(con.execute(
         f"""SELECT * FROM (
               SELECT t.epc, c.id AS contagem_id, t.lote_id,
                      CASE WHEN c.id IS NULL THEN 'FALTA' WHEN t.status='ATIVA' THEN 'OK' ELSE 'SOBRA' END AS situacao,
@@ -479,10 +500,12 @@ def etiquetas_inventario(con, inventario_id):
 
 
 def guardar_resultado(con, inventario_id):
-    for c in confrontar(con, inventario_id):
+    for c in confrontar_lotes(con, inventario_id):
         con.execute("INSERT OR REPLACE INTO inventario_resultado (inventario_id, lote_id, sistema, contado) VALUES (?,?,?,?)",
                     (inventario_id, c["lote_id"], c["sistema"], c["contado"]))
     for e in etiquetas_inventario(con, inventario_id):
+        if e.get("desconhecida"):
+            continue   # já ficam guardadas em inventario_desconhecidas
         con.execute("INSERT OR REPLACE INTO inventario_etiquetas (inventario_id, epc, lote_id, situacao) VALUES (?,?,?,?)",
                     (inventario_id, e["epc"], e["lote_id"], e["situacao"]))
 
@@ -494,7 +517,7 @@ def fechar_inventario(con, inventario_id, origem="PC"):
     if so_rfid(con, inventario_id):
         return fechar_inventario_rfid(con, inventario_id, origem)
     ajustes = 0
-    for item in confrontar(con, inventario_id):
+    for item in confrontar_lotes(con, inventario_id):
         if item["diferenca"] != 0:
             movimentar(con, "AJUSTE", item["lote_id"], item["diferenca"], origem, "MANUAL",
                        "Sobra no inventário" if item["diferenca"] > 0 else "Falta no inventário",
@@ -530,8 +553,10 @@ def fechar_inventario_rfid(con, inventario_id, origem="PC"):
     for s_ in sobras:
         movimentar(con, "AJUSTE", s_["lote_id"], s_["n"], origem, "RFID", "Sobra no inventário", documento=documento)
     con.execute("UPDATE inventarios SET status='FECHADO', fechado_em=? WHERE id=?", (db.agora(), inventario_id))
-    return {"ajustes": len(faltas) + len(sobras),
-            "faltas": sum(f["n"] for f in faltas), "sobras": sum(x["n"] for x in sobras)}
+    desconhecidas = con.execute("SELECT COUNT(*) FROM inventario_desconhecidas WHERE inventario_id=?",
+                                (inventario_id,)).fetchone()[0]
+    return {"ajustes": len(faltas) + len(sobras), "faltas": sum(f["n"] for f in faltas),
+            "sobras": sum(x["n"] for x in sobras) + desconhecidas, "desconhecidas": desconhecidas}
 
 
 def cancelar_inventario(con, inventario_id):

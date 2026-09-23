@@ -1292,10 +1292,11 @@ async function carregarInventario() {
     <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(4, "Nada para mostrar");
   const situacao = { OK: '<span class="selo sucesso">lida</span>', FALTA: '<span class="selo perigo">falta · não lida</span>',
     SOBRA: '<span class="selo perigo">sobra · não estava em estoque</span>' };
+  const rotulo = (e) => e.desconhecida ? '<span class="selo perigo">sobra · etiqueta não cadastrada</span>' : situacao[e.situacao];
   const etiquetas = d.etiquetas.filter((e) => $("iFiltroEpc").value !== "dif" || e.situacao !== "OK");
   $("tabContagens").innerHTML = etiquetas.map((e) => `<tr>
     <td class="mono ${e.situacao === "OK" ? "" : "neg"}">${esc(e.epc)}</td>
-    <td>${esc(e.sku)} <span class="fraco">${esc(e.descricao)}</span></td><td>${situacao[e.situacao]}</td>
+    <td>${esc(e.sku)} <span class="fraco">${esc(e.descricao)}</span></td><td>${rotulo(e)}</td>
     <td class="acoes">${aberto && e.contagem_id ? `<button class="link perigo-texto" onclick="removerContagem(${e.contagem_id}, this)">remover leitura</button>` : ""}</td></tr>`).join("")
     || vazio(4, d.etiquetas.length ? "Nenhuma divergência" : "Nenhuma etiqueta");
 }
@@ -1307,7 +1308,8 @@ $("iFechar").addEventListener("click", async (ev) => {
   if (!(await confirmar("Fechar inventário", "O estoque passa a ser o que foi lido no coletor:\netiquetas em estoque que NÃO foram lidas saem, e etiquetas achadas voltam.\n\nIsso não pode ser desfeito.", "Fechar e ajustar"))) return;
   await executar(botao, async () => {
     const r = await api("POST", `/api/inventarios/${inventarioAtual}/fechar`);
-    toast(r.faltas !== undefined ? `Inventário fechado: ${r.faltas} falta(s) e ${r.sobras} sobra(s) ajustadas` : `Inventário fechado: ${r.ajustes} lote(s) ajustado(s)`);
+    toast(r.faltas !== undefined ? `Inventário fechado: ${r.faltas} falta(s) e ${r.sobras} sobra(s)` +
+      (r.desconhecidas ? ` (${r.desconhecidas} não cadastrada(s): dê entrada nelas por uma ordem de recebimento)` : "") : `Inventário fechado: ${r.ajustes} lote(s) ajustado(s)`);
     await carregarInventarios(); await carregarInventario();
   });
 });

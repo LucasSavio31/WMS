@@ -108,6 +108,16 @@ CREATE TABLE IF NOT EXISTS inventario_etiquetas (
     PRIMARY KEY (inventario_id, epc)
 );
 
+-- Etiquetas lidas no inventário que o sistema não conhece (não cadastradas):
+-- contam como sobra, mas não entram no estoque (não se sabe o produto).
+CREATE TABLE IF NOT EXISTS inventario_desconhecidas (
+    inventario_id INTEGER NOT NULL REFERENCES inventarios(id),
+    epc           TEXT NOT NULL,
+    origem        TEXT NOT NULL,
+    data_hora     TEXT NOT NULL,
+    PRIMARY KEY (inventario_id, epc)
+);
+
 -- Pedidos de expedição (saída para cliente)
 CREATE TABLE IF NOT EXISTS pedidos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
