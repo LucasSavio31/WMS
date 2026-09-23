@@ -1,6 +1,7 @@
 package br.curso.wms
 
 import android.content.Context
+import android.util.Log
 import com.zebra.rfid.api3.ENUM_TRANSPORT
 import com.zebra.rfid.api3.ENUM_TRIGGER_MODE
 import com.zebra.rfid.api3.HANDHELD_TRIGGER_EVENT_TYPE
@@ -53,7 +54,15 @@ object Rfid : RfidEventsListener {
     /** Problemas do leitor viram mensagem na tela (em vez de sumir em silêncio). */
     var aoAvisar: ((String) -> Unit)? = null
 
-    private fun avisar(oque: String, e: Throwable) = aoAvisar?.invoke("RFID: $oque (${e.javaClass.simpleName}: ${e.message})")
+    private fun avisar(oque: String, e: Throwable) {
+        Log.w(TAG, "RFID: $oque", e)
+        aoAvisar?.invoke("RFID: $oque (${e.javaClass.simpleName}: ${e.message})")
+    }
+
+    /** Registro no logcat (adb logcat -s ColetorWMS) para achar problemas no aparelho. */
+    private fun log(texto: String) = Log.i(TAG, texto)
+
+    private const val TAG = "ColetorWMS"
 
     val conectado get() = leitor?.isConnected == true
 
@@ -68,8 +77,10 @@ object Rfid : RfidEventsListener {
             val falhas = mutableListOf<String>()
             for ((transporte, nome) in listOf(ENUM_TRANSPORT.SERVICE_USB to "USB", ENUM_TRANSPORT.SERVICE_SERIAL to "serial")) {
                 try {
+                    log("conectar: tentando $nome")
                     val r = Readers(context, transporte)
                     val dispositivos = r.GetAvailableRFIDReaderList()
+                    log("conectar: $nome achou ${dispositivos?.size ?: 0} leitor(es)")
                     if (dispositivos.isNullOrEmpty()) {
                         r.Dispose()
                         falhas.add("$nome: nenhum leitor")
@@ -80,12 +91,15 @@ object Rfid : RfidEventsListener {
                     readers = r
                     leitor = l
                     configurar(l)
+                    log("conectar: OK ${dispositivos[0].name} ($nome)")
                     return@thread aoTerminar("RFID conectado: ${dispositivos[0].name} ($nome)")
                 } catch (e: Throwable) {
+                    Log.w(TAG, "conectar: falhou $nome", e)
                     falhas.add("$nome: ${e.javaClass.simpleName} ${e.message ?: ""}".trim())
                     desconectar()
                 }
             }
+            log("conectar: nenhum transporte funcionou $falhas")
             aoTerminar("RFID indisponível (" + falhas.joinToString("; ") + ")")
         }
     }
@@ -140,6 +154,7 @@ object Rfid : RfidEventsListener {
      *  BARCODE_MODE -> gatilho aciona o leitor de código de barras
      */
     fun usarGatilhoParaRfid(rfid: Boolean) {
+        log("gatilho para ${if (rfid) "RFID" else "código de barras"} (leitor ${if (leitor == null) "NÃO conectado" else "conectado"})")
         val r = leitor ?: return
         thread {
             try {
@@ -185,6 +200,7 @@ object Rfid : RfidEventsListener {
         try {
             val tags = leitor?.Actions?.getReadTags(100) ?: return
             lidasNaLeitura += tags.size
+            log("leu ${tags.size} tag(s)")
             for (tag in tags) aoLerTag?.invoke(tag.tagID)
         } catch (ex: Throwable) {
         }
@@ -200,6 +216,7 @@ object Rfid : RfidEventsListener {
 
     private fun tratarGatilho(e: RfidStatusEvents?) {
         val dados = e?.StatusEventData ?: return
+        log("evento de status: ${dados.statusEventType}")
         if (dados.statusEventType != STATUS_EVENT_TYPE.HANDHELD_TRIGGER_EVENT) return
         val apertou = dados.HandheldTriggerEventData.handheldEvent ==
             HANDHELD_TRIGGER_EVENT_TYPE.HANDHELD_TRIGGER_PRESSED
@@ -214,6 +231,7 @@ object Rfid : RfidEventsListener {
     }
 
     private fun iniciarLeitura() {
+        log("iniciar leitura (perform)")
         lidasNaLeitura = 0
         leitor?.Actions?.Inventory?.perform()
     }
@@ -221,11 +239,13 @@ object Rfid : RfidEventsListener {
     private fun pararLeitura() {
         leitor?.Actions?.Inventory?.stop()
         Thread.sleep(300)   // últimas etiquetas ainda chegando
+        log("parar leitura: $lidasNaLeitura tag(s)")
         aoTerminarLeitura?.invoke(lidasNaLeitura)
     }
 
     /** Lê por alguns segundos sem usar o gatilho (botão "Ler 3 s" da tela). */
     fun lerPor(ms: Long) {
+        log("ler por $ms ms (leitor ${if (leitor == null) "NÃO conectado" else "conectado"})")
         if (leitor == null) {
             aoAvisar?.invoke("RFID: leitor não conectado")
             return

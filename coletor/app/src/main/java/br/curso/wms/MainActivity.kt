@@ -16,6 +16,9 @@ import android.os.Bundle
 import android.os.Looper
 import android.text.InputType
 import android.util.Log
+import android.view.KeyEvent
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -58,6 +61,14 @@ class MainActivity : Activity() {
             return
         }
         setContentView(web)
+        // Permite inspecionar a tela pelo PC (chrome://inspect) com o coletor no USB
+        WebView.setWebContentsDebuggingEnabled(true)
+        web.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(m: ConsoleMessage): Boolean {
+                Log.i(TAG, "tela: ${m.message()} (${m.sourceId()}:${m.lineNumber()})")
+                return true
+            }
+        }
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false   // bipes da página
@@ -188,6 +199,7 @@ class MainActivity : Activity() {
 
     /** Chama uma função JavaScript da página com um texto (ex.: leituraRfid("E280...")). */
     private fun chamarTela(funcao: String, texto: String) {
+        Log.i(TAG, "para a tela: $funcao($texto)")
         val js = "window.$funcao && window.$funcao(${JSONObject.quote(texto)})"
         runOnUiThread { if (::web.isInitialized) web.evaluateJavascript(js, null) }
     }
@@ -266,7 +278,15 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
+    /** Registra as teclas (gatilho, SCAN...) para descobrir os códigos do aparelho. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.repeatCount == 0) Log.i(TAG, "tecla ${event.keyCode} ${KeyEvent.keyCodeToString(event.keyCode)} " +
+            if (event.action == KeyEvent.ACTION_DOWN) "apertada" else "solta")
+        return super.dispatchKeyEvent(event)
+    }
+
     companion object {
         private const val PEDIDO_BLUETOOTH = 1
+        private const val TAG = "ColetorWMS"
     }
 }
