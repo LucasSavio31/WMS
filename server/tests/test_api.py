@@ -86,6 +86,11 @@ def test_baixa_por_quantidade_nao_usa_unidades_com_tag(api):
     assert [l["lote"] for l in r.json()["lotes"]] == ["CB"]       # pula o lote etiquetado
     r = api.post("/api/baixas", json={"epcs": ["T1"]})
     assert r.json()["tags"][0]["ok"]                              # a tag continua podendo sair
+    # sem etiqueta acabou (5-3=2): a baixa por quantidade usa as etiquetadas e baixa a tag
+    r = api.post("/api/baixas", json={"produto_id": pid, "quantidade": 3})
+    assert r.status_code == 200, r.text
+    assert [(l["lote"], l["quantidade"], l["etiquetas"]) for l in r.json()["lotes"]] == [("CB", 2, 0), ("RF", 1, 1)]
+    assert api.get("/api/tags/T2").json()["status"] == "BAIXADA" and saldo(api, "RF") == 0
 
 
 def lote_id(api, lote):

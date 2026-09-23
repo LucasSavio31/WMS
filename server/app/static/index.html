@@ -1085,8 +1085,9 @@ async function previaFefo() {
   try {
     const plano = await api("GET", `/api/fefo?produto_id=${produto}&quantidade=${qtd}&motivo=${$("bMotivo").value}`);
     caixa.className = "aviso";
-    caixa.innerHTML = `<b>Vai sair dos lotes (FEFO):</b><table><tr><th>Lote</th><th>Validade</th><th>Endereço</th><th class="num">Qtd</th></tr>` +
-      plano.map((l) => `<tr><td>${esc(l.lote)}</td><td>${dataBR(l.validade)}</td><td><span class="cod">${esc(l.endereco)}</span></td><td class="num">${num(l.quantidade)}</td></tr>`).join("") + "</table>";
+    caixa.innerHTML = `<b>Vai sair (primeiro o que vence antes):</b><table><tr><th>Lote</th><th>Validade</th><th>Unidades</th><th class="num">Qtd</th></tr>` +
+      plano.map((l) => `<tr><td>${l.lote !== "SEM-LOTE" ? esc(l.lote) : "-"}</td><td>${dataBR(l.validade)}</td>
+        <td>${l.etiquetas ? "com etiqueta (o sistema escolhe qual)" : "sem etiqueta"}</td><td class="num">${num(l.quantidade)}</td></tr>`).join("") + "</table>";
   } catch (e) {
     caixa.className = "aviso perigo";
     caixa.textContent = e.message;
@@ -1099,7 +1100,8 @@ aoEnviar($("formBaixa"), async () => {
     produto_id: p.id, quantidade: Number($("bQtd").value), motivo: $("bMotivo").value,
     meio: "MANUAL",
   });
-  toast("Baixa feita: " + r.lotes.map((l) => `${num(l.quantidade)} do lote ${l.lote}`).join(", "));
+  toast("Baixa feita: " + r.lotes.map((l) => `${num(l.quantidade)}${l.lote !== "SEM-LOTE" ? " do lote " + l.lote : ""}` +
+    (l.epcs?.length ? ` (etiqueta${l.epcs.length > 1 ? "s" : ""} ${l.epcs.map((e) => "…" + e.slice(-6)).join(", ")})` : "")).join(", "));
 });
 $("formBaixa").addEventListener("reset", () => setTimeout(() => { $("bPrevia").innerHTML = ""; $("bProduto").focus(); }));
 

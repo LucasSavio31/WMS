@@ -246,26 +246,29 @@ def entrada(con, produto_id, lote, validade, quantidade=0, epcs=(), origem="PC",
 
 
 # ----------------------------------------------------------------- baixa
-def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False):
+def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False, usar_etiquetadas=True):
     """Quanto tirar de cada lote, começando pelo que vence primeiro.
 
+    Primeiro saem as unidades SEM etiqueta; se não bastar, as COM etiqueta RFID
+    (a baixa escolhe quais etiquetas e marca cada uma como baixada).
     Ficam de fora: lotes bloqueados, lotes vencidos (a não ser na baixa por
-    VENCIMENTO), unidades com etiqueta RFID (saem lendo a tag) e o que já
-    está reservado para pedidos.
+    VENCIMENTO) e o que já está reservado para pedidos.
     """
     p = buscar_produto(con, produto_id)
     validar_quantidade(p, quantidade)
+    lotes = [l for l in lotes_fefo(con, produto_id) if vencido(l) == usar_vencidos]
     falta, plano = quantidade, []
-    for l in lotes_fefo(con, produto_id):
-        if vencido(l) != usar_vencidos:
-            continue
-        livre = l["quantidade"] - qtd_etiquetada(con, l["id"]) - qtd_reservada(con, l["id"])
-        if livre <= 0:
-            continue
-        tirar = min(livre, falta)
-        plano.append({"lote_id": l["id"], "lote": l["lote"], "validade": l["validade"],
-                      "endereco": l["endereco"], "quantidade": tirar})
-        falta -= tirar
+    for com_etiqueta in ((False, True) if usar_etiquetadas else (False,)):
+        for l in lotes:
+            etiquetadas, reservada = qtd_etiquetada(con, l["id"]), qtd_reservada(con, l["id"])
+            sem_etiqueta = max(l["quantidade"] - etiquetadas - reservada, 0)
+            livre = max(min(etiquetadas, l["quantidade"] - reservada - sem_etiqueta), 0) if com_etiqueta else sem_etiqueta
+            if livre <= 0 or falta <= 0:
+                continue
+            tirar = min(livre, falta)
+            plano.append({"lote_id": l["id"], "lote": l["lote"], "validade": l["validade"],
+                          "endereco": l["endereco"], "quantidade": tirar, "etiquetas": int(tirar) if com_etiqueta else 0})
+            falta -= tirar
         if falta <= 0:
             return plano
     tipo = "vencido" if usar_vencidos else "disponível"
@@ -274,10 +277,19 @@ def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False):
 
 
 def baixa_quantidade(con, produto_id, quantidade, motivo, origem="PC", meio="MANUAL", documento=None):
-    """Baixa por quantidade (PC ou código de barras): o sistema escolhe os lotes por FEFO."""
+    """Baixa por quantidade: o sistema escolhe os lotes por FEFO (e as etiquetas, se precisar)."""
     plano = sugerir_fefo(con, produto_id, quantidade, usar_vencidos=(motivo == "VENCIMENTO"))
     for item in plano:
-        movimentar(con, "BAIXA", item["lote_id"], -item["quantidade"], origem, meio, motivo, documento=documento)
+        if item["etiquetas"]:
+            epcs = [r["epc"] for r in con.execute(
+                "SELECT epc FROM tags WHERE lote_id=? AND status='ATIVA' ORDER BY epc LIMIT ?",
+                (item["lote_id"], item["etiquetas"]))]
+            for epc in epcs:
+                con.execute("UPDATE tags SET status='BAIXADA' WHERE epc=?", (epc,))
+                movimentar(con, "BAIXA", item["lote_id"], -1, origem, meio, motivo, epc, documento)
+            item["epcs"] = epcs
+        else:
+            movimentar(con, "BAIXA", item["lote_id"], -item["quantidade"], origem, meio, motivo, documento=documento)
     return {"lotes": plano, "avisos": []}
 
 
@@ -571,7 +583,7 @@ def liberar_pedido(con, pedido_id):
     ped = buscar_pedido(con, pedido_id, ("ABERTO",))
     itens = con.execute("SELECT * FROM pedido_itens WHERE pedido_id=?", (pedido_id,)).fetchall()
     for item in itens:
-        for parte in sugerir_fefo(con, item["produto_id"], item["quantidade"]):
+        for parte in sugerir_fefo(con, item["produto_id"], item["quantidade"], usar_etiquetadas=False):
             con.execute("INSERT INTO reservas (pedido_id, item_id, lote_id, quantidade) VALUES (?,?,?,?)",
                         (pedido_id, item["id"], parte["lote_id"], parte["quantidade"]))
     con.execute("UPDATE pedidos SET status='SEPARANDO', liberado_em=? WHERE id=?", (db.agora(), pedido_id))
