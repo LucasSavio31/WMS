@@ -4,388 +4,1350 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mini WMS RFID</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231f6feb'/><path d='M8 12l8-4 8 4v10l-8 4-8-4z' fill='none' stroke='white' stroke-width='2'/></svg>">
 <style>
-  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f3f5f8; color: #222; }
-  header { background: #1f3b5b; color: #fff; padding: 10px 20px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
-  header h1 { font-size: 20px; margin: 0; }
-  nav button { background: none; border: none; color: #cfe0f5; font-size: 15px; padding: 8px 12px; cursor: pointer; }
-  nav button.ativo { color: #fff; border-bottom: 3px solid #4fc3f7; }
-  main { padding: 20px; max-width: 1100px; margin: auto; }
-  section { display: none; } section.ativo { display: block; }
-  .card { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 3px #0002; }
-  table { width: 100%; border-collapse: collapse; background: #fff; }
-  th, td { padding: 7px 9px; border-bottom: 1px solid #e3e6ea; text-align: left; font-size: 14px; }
-  th { background: #eef2f6; }
-  input, select, button { font-size: 14px; padding: 6px 8px; margin: 3px 4px 3px 0; }
-  button.principal { background: #1f78d1; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-  button.perigo { background: #c62828; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-  .vencido { color: #c62828; font-weight: bold; } .alerta { color: #e67e00; font-weight: bold; }
-  .pos { color: #2e7d32; } .neg { color: #c62828; }
-  #msg { position: fixed; bottom: 20px; right: 20px; padding: 12px 18px; border-radius: 6px; color: #fff; display: none; }
-  label { font-size: 13px; color: #555; }
+  :root {
+    --bg: #f3f5f8; --painel: #ffffff; --painel-2: #f8fafc; --borda: #e2e7ee; --texto: #1c2430; --texto-2: #5c6778;
+    --lateral: #16263a; --lateral-texto: #b7c6d9; --lateral-ativo: #24405f;
+    --primaria: #1f6feb; --primaria-texto: #fff; --perigo: #c62828; --sucesso: #2e7d32; --alerta: #b26a00; --info: #0277bd;
+    --fundo-perigo: #fdecea; --fundo-sucesso: #e8f5e9; --fundo-alerta: #fff4e0; --fundo-info: #e3f2fd; --fundo-neutro: #eef1f5;
+    --sombra: 0 1px 3px rgba(16, 24, 40, .08), 0 1px 2px rgba(16, 24, 40, .04);
+    --raio: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1520; --painel: #172130; --painel-2: #1b2738; --borda: #2a3748; --texto: #e4eaf2; --texto-2: #9aa8ba;
+      --lateral: #0b111a; --lateral-texto: #9fb0c5; --lateral-ativo: #1c2b40;
+      --primaria: #3d8bfd; --perigo: #ef5350; --sucesso: #66bb6a; --alerta: #ffb74d; --info: #4fc3f7;
+      --fundo-perigo: #3a1d1f; --fundo-sucesso: #1b3320; --fundo-alerta: #3a2c14; --fundo-info: #13304a; --fundo-neutro: #243145;
+      --sombra: 0 1px 3px rgba(0, 0, 0, .4);
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; background: var(--bg); color: var(--texto); }
+  a { color: var(--primaria); }
+
+  /* ---------- layout ---------- */
+  .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+  aside { background: var(--lateral); color: var(--lateral-texto); padding: 14px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .marca { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 17px; padding: 4px 8px 16px; }
+  .marca svg { flex: none; }
+  .marca small { display: block; font-weight: 400; font-size: 11px; color: var(--lateral-texto); }
+  nav .grupo { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; opacity: .6; padding: 14px 10px 4px; }
+  nav a { display: flex; align-items: center; gap: 10px; color: var(--lateral-texto); text-decoration: none; padding: 8px 10px; border-radius: 7px; margin: 1px 0; }
+  nav a:hover { background: var(--lateral-ativo); color: #fff; }
+  nav a.ativo { background: var(--primaria); color: #fff; }
+  nav a .contador { margin-left: auto; background: #ffffff26; border-radius: 10px; font-size: 11px; padding: 0 7px; }
+  nav a .contador:empty { display: none; }
+  nav svg { width: 17px; height: 17px; flex: none; }
+  nav a.perigo-menu:hover { background: var(--perigo); color: #fff; }
+
+  .conteudo { min-width: 0; }
+  .topo { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--painel); border-bottom: 1px solid var(--borda); position: sticky; top: 0; z-index: 5; }
+  .topo h1 { font-size: 19px; margin: 0; }
+  .topo .sub { color: var(--texto-2); font-size: 13px; }
+  .topo .direita { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--texto-2); font-size: 13px; }
+  .ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--sucesso); display: inline-block; }
+  .ponto.off { background: var(--perigo); }
+  #menuBotao { display: none; }
+  main { padding: 20px 24px 60px; max-width: 1400px; }
+  section.pagina { display: none; } section.pagina.ativo { display: block; }
+
+  /* ---------- componentes ---------- */
+  .card { background: var(--painel); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: var(--sombra); padding: 16px 18px; margin-bottom: 16px; }
+  .card > h2, .card-titulo { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .card-titulo { flex-wrap: wrap; }
+  .card-titulo .acoes { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+  .cod { white-space: nowrap; font-weight: 600; }
+  .ajuda { color: var(--texto-2); font-size: 13px; margin: -6px 0 12px; }
+  .grade { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g-form { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: start; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .kpi { background: var(--painel); border: 1px solid var(--borda); border-radius: var(--raio); padding: 14px 16px; box-shadow: var(--sombra); text-decoration: none; color: inherit; display: block; }
+  a.kpi:hover { border-color: var(--primaria); }
+  .kpi .rotulo { color: var(--texto-2); font-size: 12px; }
+  .kpi .valor { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi.alerta .valor { color: var(--alerta); } .kpi.perigo .valor { color: var(--perigo); } .kpi.sucesso .valor { color: var(--sucesso); }
+
+  form .campos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
+  form .campos .largo { grid-column: 1 / -1; }
+  form .campos .meio { grid-column: span 2; }
+  .campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .campo > span { font-size: 12px; color: var(--texto-2); font-weight: 600; }
+  .campo > span .obrig { color: var(--perigo); }
+  input, select, textarea { font: inherit; color: var(--texto); background: var(--painel); border: 1px solid var(--borda); border-radius: 7px; padding: 7px 9px; width: 100%; min-width: 0; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--primaria); outline-offset: -1px; border-color: var(--primaria); }
+  input.leitor { font-family: Consolas, monospace; background: var(--painel-2); }
+  input[type=checkbox] { width: auto; }
+  .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .botoes { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  button, .botao { font: inherit; font-weight: 600; border: 1px solid var(--borda); background: var(--painel); color: var(--texto); border-radius: 7px; padding: 7px 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  button:hover, .botao:hover { background: var(--painel-2); }
+  button:disabled { opacity: .55; cursor: wait; }
+  button.primario { background: var(--primaria); border-color: var(--primaria); color: var(--primaria-texto); }
+  button.perigo { background: var(--perigo); border-color: var(--perigo); color: #fff; }
+  button.sucesso { background: var(--sucesso); border-color: var(--sucesso); color: #fff; }
+  button.primario:hover, button.perigo:hover, button.sucesso:hover { filter: brightness(1.08); }
+  button.pequeno, .botao.pequeno { padding: 3px 9px; font-size: 12px; font-weight: 600; }
+  button.link { border: none; background: none; color: var(--primaria); padding: 2px 4px; }
+  button.link.perigo-texto { color: var(--perigo); }
+
+  .barra { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .barra input[type=search] { max-width: 280px; }
+  .barra select { width: auto; }
+  .barra .direita { margin-left: auto; display: flex; gap: 8px; }
+
+  .tabela { overflow-x: auto; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--painel); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--borda); text-align: left; vertical-align: middle; }
+  th { background: var(--painel-2); font-size: 12px; color: var(--texto-2); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--painel-2); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.acoes { white-space: nowrap; text-align: right; }
+  tr.grupo td { background: var(--fundo-neutro); font-weight: 600; }
+  tr.inativo td { opacity: .55; }
+  .vazio { text-align: center; color: var(--texto-2); padding: 26px; }
+  .mono { font-family: Consolas, monospace; font-size: 12.5px; }
+  .fraco { color: var(--texto-2); font-size: 12px; }
+  .pos { color: var(--sucesso); font-weight: 600; } .neg { color: var(--perigo); font-weight: 600; }
+
+  .selo { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11.5px; font-weight: 600; background: var(--fundo-neutro); color: var(--texto-2); white-space: nowrap; }
+  .selo.perigo { background: var(--fundo-perigo); color: var(--perigo); }
+  .selo.alerta { background: var(--fundo-alerta); color: var(--alerta); }
+  .selo.sucesso { background: var(--fundo-sucesso); color: var(--sucesso); }
+  .selo.info { background: var(--fundo-info); color: var(--info); }
+
+  .aviso { border-radius: 8px; padding: 10px 12px; margin: 10px 0 0; font-size: 13px; background: var(--fundo-info); color: var(--texto); border-left: 4px solid var(--info); }
+  .aviso.alerta { background: var(--fundo-alerta); border-color: var(--alerta); }
+  .aviso.perigo { background: var(--fundo-perigo); border-color: var(--perigo); }
+  .aviso:empty { display: none; }
+  .aviso table { margin-top: 6px; background: transparent; }
+  .aviso th { background: transparent; position: static; }
+
+  .passos { display: flex; gap: 6px; margin: 6px 0 14px; flex-wrap: wrap; }
+  .passos span { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--fundo-neutro); color: var(--texto-2); }
+  .passos span.feito { background: var(--fundo-sucesso); color: var(--sucesso); }
+  .passos span.atual { background: var(--primaria); color: #fff; }
+  .lista-simples { list-style: none; padding: 0; margin: 0; }
+  .lista-simples li { padding: 8px 0; border-bottom: 1px solid var(--borda); display: flex; gap: 8px; align-items: center; }
+  .lista-simples li:last-child { border-bottom: none; }
+  .item-lista { cursor: pointer; border-radius: 7px; padding: 8px 10px !important; }
+  .item-lista:hover, .item-lista.ativo { background: var(--fundo-info); }
+
+  /* ---------- toasts e modal ---------- */
+  #toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; max-width: min(420px, calc(100vw - 36px)); }
+  .toast { background: var(--painel); color: var(--texto); border: 1px solid var(--borda); border-left: 5px solid var(--sucesso); border-radius: 8px; padding: 10px 14px; box-shadow: 0 6px 20px rgba(0,0,0,.18); animation: entra .18s ease-out; white-space: pre-line; }
+  .toast.erro { border-left-color: var(--perigo); } .toast.alerta { border-left-color: var(--alerta); }
+  @keyframes entra { from { transform: translateY(8px); opacity: 0; } }
+  dialog { border: 1px solid var(--borda); border-radius: 12px; padding: 0; background: var(--painel); color: var(--texto); width: min(460px, calc(100vw - 32px)); box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+  dialog::backdrop { background: rgba(10, 16, 26, .5); }
+  dialog form { padding: 18px 20px; }
+  dialog h3 { margin: 0 0 4px; font-size: 16px; }
+  dialog .botoes { justify-content: flex-end; }
+
+  @media (max-width: 980px) {
+    .g2, .g-form { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .app { grid-template-columns: 1fr; }
+    aside { position: fixed; inset: 0 auto 0 0; width: 240px; z-index: 20; transform: translateX(-100%); transition: transform .2s; }
+    body.menu-aberto aside { transform: none; box-shadow: 0 0 0 100vmax rgba(0,0,0,.4); }
+    #menuBotao { display: inline-flex; }
+    .topo { padding: 10px 16px; } main { padding: 16px 16px 60px; }
+    form .campos .meio { grid-column: 1 / -1; }
+    .topo .sub { display: none; }
+  }
+  @media print {
+    aside, .topo, .nao-imprimir, #toasts { display: none !important; }
+    .app { display: block; } main { padding: 0; }
+    .card { box-shadow: none; border: none; padding: 0; }
+    body { background: #fff; color: #000; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>Mini WMS RFID</h1>
-  <nav>
-    <button data-aba="estoque" class="ativo">Estoque</button>
-    <button data-aba="produtos">Produtos</button>
-    <button data-aba="entrada">Entrada</button>
-    <button data-aba="baixa">Baixa</button>
-    <button data-aba="inventario">Inventário</button>
-    <button data-aba="movimentos">Movimentos</button>
-  </nav>
-</header>
-
-<main>
-  <!-- ===================== POSIÇÃO DE ESTOQUE ===================== -->
-  <section id="estoque" class="ativo">
-    <div class="card">
-      <b>Posição de estoque</b> — lotes em ordem FEFO (vence primeiro, sai primeiro). Atualiza sozinha a cada 3 s.
+<div class="app">
+  <!-- ======================================================= MENU LATERAL -->
+  <aside>
+    <div class="marca">
+      <svg width="30" height="30" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1f6feb"/><path d="M8 12l8-4 8 4v10l-8 4-8-4z M8 12l8 4 8-4 M16 16v10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <div>Mini WMS<small>RFID · FEFO · Endereçamento</small></div>
     </div>
-    <table>
-      <thead><tr><th>SKU</th><th>Produto</th><th>Lote</th><th>Validade</th><th>Qtd</th><th>Tags RFID</th><th>Total produto</th></tr></thead>
-      <tbody id="tabEstoque"></tbody>
-    </table>
-  </section>
+    <nav id="menu">
+      <a href="#painel" data-pagina="painel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Painel</a>
+      <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Posição de estoque</a>
+      <div class="grupo">Operações</div>
+      <a href="#recebimento" data-pagina="recebimento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12 M7 10l5 5 5-5 M4 21h16"/></svg>Recebimento<span class="contador" id="cntDoca"></span></a>
+      <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa de estoque</a>
+      <a href="#expedicao" data-pagina="expedicao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h11v10H3z M14 10h4l3 3v4h-7 M7 20a2 2 0 100-4 2 2 0 000 4z M17 20a2 2 0 100-4 2 2 0 000 4z"/></svg>Pedidos / Expedição<span class="contador" id="cntPedidos"></span></a>
+      <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
+      <a href="#movimentos" data-pagina="movimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Movimentos (kardex)</a>
+      <div class="grupo">Cadastros</div>
+      <a href="#produtos" data-pagina="produtos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14 M7 5v14 M11 5v14 M14 5v14 M18 5v14 M20 5v14"/></svg>Produtos</a>
+      <a href="#enderecos" data-pagina="enderecos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Endereços</a>
+      <div class="grupo">Ajuda</div>
+      <a href="/m" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M9 7h6 M9 11h6"/></svg>Tela do coletor (web)</a>
+      <a href="/coletor" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>Simulador do coletor</a>
+      <a href="/docs" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l-4 3 4 3 M16 9l4 3-4 3 M13 6l-2 12"/></svg>API (coletor)</a>
+      <div class="grupo">Sistema</div>
+      <a href="#" id="btLimparTudo" class="perigo-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3"/></svg>Limpar tudo</a>
+    </nav>
+  </aside>
 
-  <!-- ===================== PRODUTOS ===================== -->
-  <section id="produtos">
-    <div class="card">
-      <b>Cadastro de produto</b><br>
-      <input type="hidden" id="pId">
-      <input id="pSku" placeholder="SKU (código interno)">
-      <input id="pDesc" placeholder="Descrição" size="30">
-      <input id="pEan" placeholder="EAN (código de barras)">
-      <input id="pUn" value="UN" size="4">
-      <label>Mínimo <input id="pMin" type="number" value="0" style="width:70px"></label>
-      <button class="principal" onclick="salvarProduto()">Salvar</button>
-      <button onclick="limparProduto()">Novo</button>
+  <div class="conteudo">
+    <div class="topo">
+      <button id="menuBotao" class="pequeno" aria-label="Abrir menu">☰</button>
+      <div><h1 id="tituloPagina">Painel</h1><div class="sub" id="subtituloPagina"></div></div>
+      <div class="direita"><span class="ponto" id="pontoConexao"></span><span id="relogio">conectando…</span></div>
     </div>
-    <table>
-      <thead><tr><th>SKU</th><th>Descrição</th><th>EAN</th><th>Un</th><th>Mínimo</th><th></th></tr></thead>
-      <tbody id="tabProdutos"></tbody>
-    </table>
-  </section>
 
-  <!-- ===================== ENTRADA ===================== -->
-  <section id="entrada">
-    <div class="card">
-      <b>Entrada de estoque</b> (pelo PC)<br>
-      <select id="eProduto"></select>
-      <input id="eLote" placeholder="Lote">
-      <label>Validade <input id="eVal" type="date"></label>
-      <input id="eQtd" type="number" placeholder="Quantidade" style="width:110px">
-      <button class="principal" onclick="darEntrada()">Dar entrada</button>
-      <p><label>Entrada com etiquetas RFID é feita no coletor (cada tag lida = 1 unidade).</label></p>
-    </div>
-  </section>
+    <main>
+      <!-- =================================================== PAINEL -->
+      <section class="pagina" id="painel" data-titulo="Painel" data-sub="Visão geral do armazém">
+        <div class="kpis" id="kpis"></div>
+        <div class="grade g2">
+          <div class="card">
+            <div class="card-titulo">Validade: vencidos e a vencer em 30 dias<span class="acoes"><a class="botao pequeno" href="#estoque" onclick="filtroEstoqueInicial='validade'">Ver no estoque</a></span></div>
+            <div class="tabela"><table>
+              <thead><tr><th>Produto</th><th>Lote</th><th>Endereço</th><th>Validade</th><th class="num">Saldo</th></tr></thead>
+              <tbody id="tabPainelValidade"></tbody></table></div>
+          </div>
+          <div class="card">
+            <div class="card-titulo">Abaixo do estoque mínimo</div>
+            <div class="tabela"><table>
+              <thead><tr><th>SKU</th><th>Produto</th><th class="num">Saldo</th><th class="num">Mínimo</th><th class="num">Repor</th></tr></thead>
+              <tbody id="tabPainelMinimo"></tbody></table></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-titulo">Últimos movimentos<span class="acoes"><a class="botao pequeno" href="#movimentos">Ver todos</a></span></div>
+          <div class="tabela"><table>
+            <thead><tr><th>Data/hora</th><th>Tipo</th><th>Produto</th><th>Lote</th><th>Endereço</th><th class="num">Qtd</th><th>Documento / motivo</th><th>Origem</th></tr></thead>
+            <tbody id="tabPainelMov"></tbody></table></div>
+        </div>
+      </section>
 
-  <!-- ===================== BAIXA ===================== -->
-  <section id="baixa">
-    <div class="card">
-      <b>Baixa por quantidade</b> — o sistema escolhe os lotes por FEFO
-      (lotes vencidos só saem com o motivo VENCIMENTO)<br>
-      <input id="bCodigo" placeholder="Leia o código de barras ou SKU" size="28" onchange="acharProdutoBaixa()">
-      <select id="bProduto"></select>
-      <input id="bQtd" type="number" placeholder="Quantidade" style="width:110px">
-      <select id="bMotivo"></select>
-      <button onclick="previaFefo()">Ver lotes (FEFO)</button>
-      <button class="perigo" onclick="darBaixa()">Confirmar baixa</button>
-      <div id="bPrevia"></div>
-    </div>
-    <div class="card">
-      <b>Baixa de uma tag RFID</b> (digitando o EPC)<br>
-      <input id="bEpc" placeholder="EPC" size="30">
-      <button class="perigo" onclick="baixaEpc()">Baixar tag</button>
-    </div>
-  </section>
+      <!-- =================================================== ESTOQUE -->
+      <section class="pagina" id="estoque" data-titulo="Posição de estoque" data-sub="Saldo por produto, lote e endereço, em ordem FEFO (vence primeiro, sai primeiro)">
+        <div class="barra">
+          <input type="search" id="estBusca" placeholder="Buscar SKU, produto, lote ou endereço">
+          <select id="estFiltro">
+            <option value="">Todos os lotes</option>
+            <option value="vencidos">Vencidos</option>
+            <option value="validade">Vencidos e a vencer (30 dias)</option>
+            <option value="bloqueados">Bloqueados</option>
+            <option value="doca">Na doca (a armazenar)</option>
+            <option value="reservados">Com reserva de pedido</option>
+            <option value="minimo">Produtos abaixo do mínimo</option>
+          </select>
+          <label class="check"><input type="checkbox" id="estSemSaldo"> Mostrar produtos sem saldo</label>
+          <div class="direita"><a class="botao" href="/api/estoque.csv">Exportar CSV</a></div>
+        </div>
+        <div class="tabela"><table>
+          <thead><tr><th>Lote</th><th>Validade</th><th>Endereço</th><th>Status</th><th class="num">Saldo</th><th class="num">Reservado</th><th class="num">Tags RFID</th><th class="num">Disponível*</th><th></th></tr></thead>
+          <tbody id="tabEstoque"></tbody></table></div>
+        <p class="fraco">* Disponível para baixa por quantidade = saldo − reservado para pedidos − unidades com tag RFID (essas saem lendo a tag). Lotes bloqueados ou vencidos não entram no FEFO.</p>
+      </section>
 
-  <!-- ===================== INVENTÁRIO ===================== -->
-  <section id="inventario">
-    <div class="card">
-      <input id="iNome" placeholder="Nome do inventário (ex.: Contagem setembro)" size="35">
-      <button class="principal" onclick="abrirInventario()">Abrir inventário</button>
-      <select id="iLista" onchange="carregarInventario()"></select>
-    </div>
-    <div id="iDetalhe" style="display:none">
-      <div class="card">
-        <b id="iTitulo"></b><br>
-        <label>Adicionar item contado no PC:</label><br>
-        <input id="iCodigo" placeholder="Código de barras ou SKU" onchange="acharProdutoInv()">
-        <select id="iProduto" onchange="carregarLotesInv()"></select>
-        <select id="iLote"></select>
-        <input id="iQtd" type="number" placeholder="Qtd contada" style="width:110px">
-        <button class="principal" onclick="adicionarContagem()">Adicionar</button>
-        <button class="perigo" style="float:right" onclick="fecharInventario()">Fechar e ajustar estoque</button>
-        <p><label>No coletor: leia as tags RFID ou o código de barras dentro deste inventário.</label></p>
-      </div>
-      <h3>Confronto: físico × sistema</h3>
-      <table>
-        <thead><tr><th>SKU</th><th>Produto</th><th>Lote</th><th>Validade</th><th>Sistema</th><th>Contado</th><th>Diferença</th></tr></thead>
-        <tbody id="tabConfronto"></tbody>
-      </table>
-      <h3>Itens contados</h3>
-      <table>
-        <thead><tr><th>Hora</th><th>SKU</th><th>Lote</th><th>Qtd</th><th>EPC</th><th>Origem</th><th>Meio</th><th></th></tr></thead>
-        <tbody id="tabContagens"></tbody>
-      </table>
-    </div>
-  </section>
+      <!-- =================================================== RECEBIMENTO -->
+      <section class="pagina" id="recebimento" data-titulo="Recebimento" data-sub="Entrada de mercadoria. Lote novo vai para a doca de recebimento; depois armazene no endereço">
+        <div class="grade g-form">
+          <div class="card">
+            <h2>Nova entrada</h2>
+            <p class="ajuda">Leia o código de barras (ou digite o SKU) e tecle Enter. Entrada com etiquetas RFID é feita no coletor: cada tag lida vale 1 unidade.</p>
+            <form id="formEntrada" autocomplete="off">
+              <div class="campos">
+                <label class="campo largo"><span>Código de barras / SKU</span><input id="eCodigo" class="leitor" placeholder="Bipe o código e tecle Enter"></label>
+                <label class="campo largo"><span>Produto <b class="obrig">*</b></span><select id="eProduto" data-produtos="ativos" required></select></label>
+                <label class="campo"><span>Lote <b class="obrig">*</b></span><input id="eLote" list="eLotesExistentes" required placeholder="Ex.: L2409" style="text-transform:uppercase"></label>
+                <datalist id="eLotesExistentes"></datalist>
+                <label class="campo"><span>Validade</span><input id="eValidade" type="date"></label>
+                <label class="campo"><span>Quantidade <b class="obrig">*</b></span><input id="eQtd" type="number" min="0" step="any" required></label>
+                <label class="campo"><span>Endereço</span><select id="eEndereco" data-enderecos></select></label>
+                <label class="campo largo"><span>Documento (nota fiscal)</span><input id="eDoc" placeholder="Ex.: NF 12345"></label>
+              </div>
+              <div id="eInfo" class="aviso"></div>
+              <div class="botoes">
+                <button class="primario" type="submit">Registrar entrada</button>
+                <button type="reset">Limpar</button>
+              </div>
+            </form>
+          </div>
+          <div>
+            <div class="card">
+              <div class="card-titulo">Lotes na doca aguardando armazenagem</div>
+              <p class="ajuda">Armazenar = transferir o lote da doca para o endereço de estoque (put-away).</p>
+              <div class="tabela"><table>
+                <thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Qtd</th><th></th></tr></thead>
+                <tbody id="tabDoca"></tbody></table></div>
+            </div>
+            <div class="card">
+              <div class="card-titulo">Entradas de hoje</div>
+              <div class="tabela"><table>
+                <thead><tr><th>Hora</th><th>Produto</th><th>Lote</th><th class="num">Qtd</th><th>Documento</th><th>Origem</th></tr></thead>
+                <tbody id="tabEntradasHoje"></tbody></table></div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-  <!-- ===================== MOVIMENTOS ===================== -->
-  <section id="movimentos">
-    <table>
-      <thead><tr><th>Data/hora</th><th>Tipo</th><th>SKU</th><th>Lote</th><th>Qtd</th><th>EPC</th><th>Origem</th><th>Meio</th><th>Motivo</th></tr></thead>
-      <tbody id="tabMovimentos"></tbody>
-    </table>
-  </section>
-</main>
+      <!-- =================================================== BAIXA -->
+      <section class="pagina" id="saida" data-titulo="Baixa de estoque" data-sub="Consumo, avaria, perda e vencimento. Para vender a um cliente, use Pedidos / Expedição">
+        <div class="grade g-form">
+          <div class="card">
+            <h2>Baixa por quantidade (FEFO)</h2>
+            <p class="ajuda">O sistema escolhe os lotes: primeiro o que vence antes. Lotes vencidos só saem com o motivo VENCIMENTO.</p>
+            <form id="formBaixa" autocomplete="off">
+              <div class="campos">
+                <label class="campo largo"><span>Código de barras / SKU</span><input id="bCodigo" class="leitor" placeholder="Bipe o código e tecle Enter"></label>
+                <label class="campo largo"><span>Produto <b class="obrig">*</b></span><select id="bProduto" data-produtos="todos" required></select></label>
+                <label class="campo"><span>Quantidade <b class="obrig">*</b></span><input id="bQtd" type="number" min="0" step="any" required></label>
+                <label class="campo"><span>Motivo <b class="obrig">*</b></span><select id="bMotivo" data-motivos required></select></label>
+                <label class="campo largo"><span>Documento / observação</span><input id="bDoc" placeholder="Ex.: Requisição 45"></label>
+              </div>
+              <div id="bPrevia" class="aviso"></div>
+              <div class="botoes">
+                <button class="perigo" type="submit">Confirmar baixa</button>
+                <button type="reset">Limpar</button>
+              </div>
+            </form>
+          </div>
+          <div class="card">
+            <h2>Baixa por etiqueta RFID (EPC)</h2>
+            <p class="ajuda">No dia a dia a baixa por RFID é feita no coletor. Aqui dá para digitar ou colar os EPCs, um por linha.</p>
+            <form id="formEpc" autocomplete="off">
+              <div class="campos">
+                <label class="campo largo"><span>EPCs <b class="obrig">*</b></span><textarea id="tEpcs" rows="5" class="mono" required placeholder="E2801160600002..."></textarea></label>
+                <label class="campo"><span>Motivo</span><select id="tMotivo" data-motivos></select></label>
+                <label class="campo"><span>Documento</span><input id="tDoc"></label>
+              </div>
+              <div id="tResultado" class="aviso"></div>
+              <div class="botoes">
+                <button class="perigo" type="submit">Baixar tags</button>
+                <button type="reset">Limpar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
 
-<div id="msg"></div>
+      <!-- =================================================== EXPEDIÇÃO -->
+      <section class="pagina" id="expedicao" data-titulo="Pedidos / Expedição" data-sub="Pedido → liberar separação (reserva FEFO) → separar pela lista → confirmar expedição (baixa)">
+        <div class="grade g-form">
+          <div class="nao-imprimir">
+            <div class="card">
+              <h2>Novo pedido</h2>
+              <form id="formPedido" autocomplete="off">
+                <div class="campos">
+                  <label class="campo meio"><span>Cliente <b class="obrig">*</b></span><input id="pdCliente" required></label>
+                  <label class="campo"><span>Nº do pedido</span><input id="pdNumero" placeholder="Automático"></label>
+                  <label class="campo largo"><span>Observação</span><input id="pdObs"></label>
+                </div>
+                <div class="card-titulo" style="margin:14px 0 8px">Itens</div>
+                <div class="campos">
+                  <label class="campo largo"><span>Código de barras / SKU</span><input id="pdCodigo" class="leitor" placeholder="Bipe e tecle Enter"></label>
+                  <label class="campo meio"><span>Produto</span><select id="pdProduto" data-produtos="ativos"></select></label>
+                  <label class="campo"><span>Quantidade</span><input id="pdQtd" type="number" min="0" step="any"></label>
+                </div>
+                <div class="botoes"><button type="button" id="pdAdicionar">+ Adicionar item</button></div>
+                <div class="tabela" style="margin-top:10px"><table>
+                  <thead><tr><th>Produto</th><th class="num">Qtd</th><th class="num">Disponível</th><th></th></tr></thead>
+                  <tbody id="tabPedidoNovo"></tbody></table></div>
+                <div class="botoes">
+                  <button class="primario" type="submit">Criar pedido</button>
+                  <button type="reset">Limpar</button>
+                </div>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-titulo">Pedidos
+                <span class="acoes"><select id="pdFiltro" style="width:auto">
+                  <option value="ativos">Em aberto</option><option value="">Todos</option>
+                  <option value="EXPEDIDO">Expedidos</option><option value="CANCELADO">Cancelados</option>
+                </select></span></div>
+              <ul class="lista-simples" id="listaPedidos"></ul>
+            </div>
+          </div>
+          <div class="card" id="pedidoDetalhe"><p class="vazio">Escolha um pedido na lista ou crie um novo.</p></div>
+        </div>
+      </section>
+
+      <!-- =================================================== INVENTÁRIO -->
+      <section class="pagina" id="inventario" data-titulo="Inventário" data-sub="Contagem física × sistema. Ao fechar, o saldo passa a ser o contado">
+        <div class="card barra nao-imprimir">
+          <form id="formNovoInv" class="barra" style="margin:0; flex:1" autocomplete="off">
+            <input id="iNome" placeholder="Nome (ex.: Inventário geral setembro)" style="max-width:320px">
+            <button class="primario" type="submit">Abrir inventário</button>
+          </form>
+          <select id="iLista" style="width:auto; min-width:260px"></select>
+        </div>
+        <div id="iDetalhe" style="display:none">
+          <div class="kpis" id="iKpis"></div>
+          <div class="grade g-form">
+            <div class="card" id="iCardContagem">
+              <h2>Registrar contagem</h2>
+              <p class="ajuda">Contagens do mesmo lote são somadas (ex.: o lote está em dois lugares). No coletor, leia as tags RFID ou o código de barras dentro deste inventário.</p>
+              <form id="formContagem" autocomplete="off">
+                <div class="campos">
+                  <label class="campo largo"><span>Código de barras / SKU</span><input id="iCodigo" class="leitor" placeholder="Bipe e tecle Enter"></label>
+                  <label class="campo largo"><span>Produto <b class="obrig">*</b></span><select id="iProduto" data-produtos="todos" required></select></label>
+                  <label class="campo meio"><span>Lote <b class="obrig">*</b></span><select id="iLote" required></select></label>
+                  <label class="campo"><span>Qtd contada <b class="obrig">*</b></span><input id="iQtd" type="number" min="0" step="any" required></label>
+                </div>
+                <div class="botoes">
+                  <button class="primario" type="submit">Adicionar contagem</button>
+                  <button type="reset">Limpar</button>
+                </div>
+              </form>
+              <div class="botoes" style="border-top:1px solid var(--borda); padding-top:14px">
+                <button class="sucesso" id="iFechar" type="button">Fechar e ajustar estoque</button>
+                <button id="iCancelar" type="button">Cancelar inventário</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-titulo">Confronto: físico × sistema
+                <span class="acoes"><select id="iFiltro" style="width:auto">
+                  <option value="">Todos os lotes</option><option value="dif">Só divergências</option><option value="nao">Não contados</option>
+                </select></span></div>
+              <div class="tabela"><table>
+                <thead><tr><th>Endereço</th><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Sistema</th><th class="num">Contado</th><th class="num">Diferença</th></tr></thead>
+                <tbody id="tabConfronto"></tbody></table></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-titulo">Contagens registradas</div>
+            <div class="tabela"><table>
+              <thead><tr><th>Hora</th><th>Produto</th><th>Lote</th><th class="num">Qtd</th><th>EPC</th><th>Origem</th><th>Meio</th><th></th></tr></thead>
+              <tbody id="tabContagens"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================== MOVIMENTOS -->
+      <section class="pagina" id="movimentos" data-titulo="Movimentos (kardex)" data-sub="Tudo que aconteceu com cada lote, com o saldo depois de cada movimento">
+        <form id="formFiltroMov" class="card barra" autocomplete="off">
+          <input type="search" id="mBusca" placeholder="SKU, produto, lote, documento ou EPC" style="max-width:260px">
+          <select id="mProduto" data-produtos="todos" data-vazio="Todos os produtos" style="max-width:240px"></select>
+          <select id="mTipo"><option value="">Todos os tipos</option><option>ENTRADA</option><option>BAIXA</option><option>AJUSTE</option><option>TRANSFERENCIA</option><option>BLOQUEIO</option><option>LIBERACAO</option></select>
+          <label class="check">De <input type="date" id="mDe"></label>
+          <label class="check">Até <input type="date" id="mAte"></label>
+          <button class="primario" type="submit">Filtrar</button>
+          <button type="reset">Limpar</button>
+          <span class="direita"><a class="botao" id="mCsv" href="/api/movimentos.csv">Exportar CSV</a></span>
+        </form>
+        <div class="tabela"><table>
+          <thead><tr><th>Data/hora</th><th>Tipo</th><th>Produto</th><th>Lote</th><th>Endereço</th><th class="num">Qtd</th><th class="num">Saldo lote</th><th>Documento</th><th>Motivo</th><th>EPC</th><th>Origem</th></tr></thead>
+          <tbody id="tabMovimentos"></tbody></table></div>
+        <p class="fraco" id="mRodape"></p>
+      </section>
+
+      <!-- =================================================== PRODUTOS -->
+      <section class="pagina" id="produtos" data-titulo="Produtos" data-sub="Cadastro de SKUs">
+        <div class="grade g-form">
+          <div class="card">
+            <h2 id="pTitulo">Novo produto</h2>
+            <form id="formProduto" autocomplete="off">
+              <input type="hidden" id="pId">
+              <div class="campos">
+                <label class="campo"><span>SKU <b class="obrig">*</b></span><input id="pSku" required maxlength="40" style="text-transform:uppercase"></label>
+                <label class="campo"><span>EAN (código de barras)</span><input id="pEan" class="leitor" maxlength="20" inputmode="numeric"></label>
+                <label class="campo largo"><span>Descrição <b class="obrig">*</b></span><input id="pDesc" required maxlength="120"></label>
+                <label class="campo"><span>Unidade</span><select id="pUn">
+                  <option value="UN">UN - unidade</option><option value="CX">CX - caixa</option><option value="PCT">PCT - pacote</option>
+                  <option value="FD">FD - fardo</option><option value="KG">KG - quilo</option><option value="L">L - litro</option><option value="M">M - metro</option></select></label>
+                <label class="campo"><span>Estoque mínimo</span><input id="pMin" type="number" min="0" step="any" value="0"></label>
+                <label class="check largo"><input type="checkbox" id="pAtivo" checked> Ativo (recebe entradas e pedidos)</label>
+              </div>
+              <div class="botoes">
+                <button class="primario" type="submit">Salvar produto</button>
+                <button type="reset" id="pCancelar">Limpar</button>
+              </div>
+            </form>
+          </div>
+          <div>
+            <div class="barra"><input type="search" id="pBusca" placeholder="Buscar SKU, descrição ou EAN">
+              <label class="check"><input type="checkbox" id="pMostrarInativos" checked> Mostrar inativos</label></div>
+            <div class="tabela"><table>
+              <thead><tr><th>SKU</th><th>Descrição</th><th>EAN</th><th>Un</th><th class="num">Mínimo</th><th class="num">Saldo</th><th>Status</th><th></th></tr></thead>
+              <tbody id="tabProdutos"></tbody></table></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================== ENDEREÇOS -->
+      <section class="pagina" id="enderecos" data-titulo="Endereços" data-sub="Locais do armazém: doca de recebimento, ruas/prateleiras e área de expedição">
+        <div class="grade g-form">
+          <div class="card">
+            <h2 id="enTitulo">Novo endereço</h2>
+            <p class="ajuda">Padrão sugerido: RUA-PRÉDIO-NÍVEL, por exemplo A-01-02.</p>
+            <form id="formEndereco" autocomplete="off">
+              <input type="hidden" id="enId">
+              <div class="campos">
+                <label class="campo"><span>Código <b class="obrig">*</b></span><input id="enCodigo" required maxlength="20" style="text-transform:uppercase" placeholder="A-01-01"></label>
+                <label class="campo"><span>Tipo</span><select id="enTipo">
+                  <option value="ARMAZENAGEM">Armazenagem</option><option value="RECEBIMENTO">Recebimento</option><option value="EXPEDICAO">Expedição</option></select></label>
+                <label class="campo largo"><span>Descrição</span><input id="enDesc" placeholder="Ex.: Rua A, prateleira 1, nível 1"></label>
+                <label class="check largo"><input type="checkbox" id="enAtivo" checked> Ativo</label>
+              </div>
+              <div class="botoes">
+                <button class="primario" type="submit">Salvar endereço</button>
+                <button type="reset">Limpar</button>
+              </div>
+            </form>
+          </div>
+          <div class="tabela"><table>
+            <thead><tr><th>Código</th><th>Tipo</th><th>Descrição</th><th class="num">Lotes</th><th class="num">Quantidade</th><th>Status</th><th></th></tr></thead>
+            <tbody id="tabEnderecos"></tbody></table></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ======================================================= DIÁLOGOS -->
+<dialog id="dlgTransferir"><form method="dialog" id="formTransferir">
+  <h3>Transferir / armazenar lote</h3>
+  <p class="fraco" id="trInfo"></p>
+  <label class="campo"><span>Endereço de destino <b class="obrig">*</b></span><select id="trDestino" data-enderecos="destino" required></select></label>
+  <div class="botoes"><button type="button" data-fechar>Cancelar</button><button class="primario" type="submit">Transferir</button></div>
+</form></dialog>
+
+<dialog id="dlgBloquear"><form method="dialog" id="formBloquear">
+  <h3>Bloquear lote (quarentena)</h3>
+  <p class="fraco" id="blInfo"></p>
+  <label class="campo"><span>Motivo do bloqueio <b class="obrig">*</b></span><input id="blMotivo" required placeholder="Ex.: embalagem avariada, aguardando análise"></label>
+  <div class="botoes"><button type="button" data-fechar>Cancelar</button><button class="perigo" type="submit">Bloquear</button></div>
+</form></dialog>
+
+<dialog id="dlgBaixaLote"><form method="dialog" id="formBaixaLote">
+  <h3>Baixa deste lote</h3>
+  <p class="fraco" id="blqInfo"></p>
+  <div class="campos" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <label class="campo"><span>Quantidade <b class="obrig">*</b></span><input id="blqQtd" type="number" min="0" step="any" required></label>
+    <label class="campo"><span>Motivo</span><select id="blqMotivo" data-motivos></select></label>
+    <label class="campo" style="grid-column:1/-1"><span>Documento / observação</span><input id="blqDoc"></label>
+  </div>
+  <div class="botoes"><button type="button" data-fechar>Cancelar</button><button class="perigo" type="submit">Confirmar baixa</button></div>
+</form></dialog>
+
+<dialog id="dlgConfirmar"><form method="dialog">
+  <h3 id="cfTitulo">Confirmar</h3>
+  <p id="cfTexto" style="white-space:pre-line"></p>
+  <div class="botoes"><button value="nao">Voltar</button><button value="sim" id="cfBotao" class="perigo">Confirmar</button></div>
+</form></dialog>
+
+<dialog id="dlgLimpar"><form method="dialog" id="formLimpar">
+  <h3>Limpar tudo</h3>
+  <p style="white-space:pre-line">Apaga os dados do sistema para recomeçar do zero: estoque, lotes, etiquetas RFID, movimentos, pedidos e inventários.
+Os códigos (pedido, inventário...) voltam a começar do 1. Isso não pode ser desfeito.</p>
+  <label class="check" style="margin:4px 0 8px"><input type="checkbox" id="lmManter"> Manter o cadastro de produtos e endereços</label>
+  <div class="botoes"><button type="button" data-fechar>Cancelar</button><button class="perigo" type="submit">Apagar tudo</button></div>
+</form></dialog>
+
+<div id="toasts" aria-live="polite"></div>
 
 <script>
-// ---------------------------------------------------------------- utilidades
+"use strict";
+// ======================================================================= utilidades
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const num = (v) => (v === null || v === undefined || v === "" ? "-" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 3 }));
+const sinal = (v) => (v > 0 ? "+" : "") + num(v);
+const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "-");
+const horaBR = (d) => (d ? d.slice(11, 16) : "");
+const dataHoraBR = (d) => (d ? `${dataBR(d)} ${d.slice(11, 19)}` : "-");
+const hojeISO = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const vazio = (colunas, texto) => `<tr><td colspan="${colunas}" class="vazio">${texto}</td></tr>`;
+
 async function api(metodo, url, corpo) {
-  const r = await fetch(url, {
-    method: metodo,
-    headers: { "Content-Type": "application/json" },
-    body: corpo ? JSON.stringify(corpo) : undefined,
-  });
-  const dados = await r.json();
-  if (!r.ok) { mensagem(dados.detail || "Erro", true); throw new Error(dados.detail); }
+  let r;
+  try {
+    r = await fetch(url, { method: metodo, headers: { "Content-Type": "application/json" }, body: corpo ? JSON.stringify(corpo) : undefined });
+  } catch {
+    conexao(false);
+    throw new Error("Sem conexão com o servidor");
+  }
+  conexao(true);
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof dados.detail === "string" ? dados.detail : "Erro no servidor");
   return dados;
 }
 
-function mensagem(texto, erro) {
-  const m = document.getElementById("msg");
-  m.textContent = texto;
-  m.style.background = erro ? "#c62828" : "#2e7d32";
-  m.style.display = "block";
-  clearTimeout(m.timer);
-  m.timer = setTimeout(() => (m.style.display = "none"), 3500);
+function toast(texto, tipo = "ok", tempo = 4000) {
+  const t = document.createElement("div");
+  t.className = "toast " + (tipo === "ok" ? "" : tipo);
+  t.textContent = texto;
+  $("toasts").append(t);
+  setTimeout(() => t.remove(), tipo === "erro" ? Math.max(tempo, 6000) : tempo);
+}
+const avisar = (avisos) => (avisos || []).forEach((a) => toast(a, "alerta", 7000));
+
+/** Executa uma ação de botão: trava o botão enquanto envia e mostra o erro, se houver. */
+async function executar(botao, acao) {
+  if (botao) botao.disabled = true;
+  try { return await acao(); }
+  catch (e) { toast(e.message, "erro"); }
+  finally { if (botao) botao.disabled = false; }
 }
 
-// Evita que textos cadastrados quebrem o HTML da tabela
-const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const $ = (id) => document.getElementById(id);
-const dataBR = (d) => (d ? d.split("-").reverse().join("/") : "-");
-
-function classeValidade(dias) {
-  if (dias === null || dias === undefined) return "";
-  if (dias < 0) return "vencido";
-  if (dias <= 30) return "alerta";
-  return "";
+/** Liga um <form>: valida, envia e, se deu certo, limpa os campos. */
+function aoEnviar(form, acao) {
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    executar(ev.submitter || form.querySelector("[type=submit]"), async () => {
+      const ok = await acao(ev);
+      if (ok !== false) form.reset();
+    });
+  });
 }
 
-// ---------------------------------------------------------------- abas
-let abaAtual = "estoque";
-document.querySelectorAll("nav button").forEach((b) =>
-  b.addEventListener("click", () => {
-    document.querySelectorAll("nav button, section").forEach((e) => e.classList.remove("ativo"));
-    b.classList.add("ativo");
-    abaAtual = b.dataset.aba;
-    $(abaAtual).classList.add("ativo");
-    atualizar();
-  })
-);
+function confirmar(titulo, texto, rotulo = "Confirmar", classe = "perigo") {
+  return new Promise((resolve) => {
+    $("cfTitulo").textContent = titulo;
+    $("cfTexto").textContent = texto;
+    $("cfBotao").textContent = rotulo;
+    $("cfBotao").className = classe;
+    const dlg = $("dlgConfirmar");
+    dlg.returnValue = "";
+    dlg.onclose = () => resolve(dlg.returnValue === "sim");
+    dlg.showModal();
+  });
+}
+document.querySelectorAll("[data-fechar]").forEach((b) => b.addEventListener("click", () => b.closest("dialog").close()));
 
-// ---------------------------------------------------------------- estoque
+let conectado = true;
+function conexao(ok) {
+  if (ok === conectado) return;
+  conectado = ok;
+  $("pontoConexao").classList.toggle("off", !ok);
+  if (!ok) $("relogio").textContent = "sem conexão com o servidor";
+}
+
+function seloValidade(validade, dias) {
+  if (!validade) return '<span class="fraco">sem validade</span>';
+  if (dias < 0) return `${dataBR(validade)} <span class="selo perigo">vencido há ${-dias}d</span>`;
+  if (dias <= 30) return `${dataBR(validade)} <span class="selo alerta">vence em ${dias}d</span>`;
+  return dataBR(validade);
+}
+const diasAte = (validade) => (validade ? Math.round((new Date(validade) - new Date(hojeISO())) / 86400000) : null);
+const seloStatus = (s) => ({ LIBERADO: '<span class="selo sucesso">Liberado</span>', BLOQUEADO: '<span class="selo perigo">Bloqueado</span>',
+  ABERTO: '<span class="selo info">Aberto</span>', SEPARANDO: '<span class="selo alerta">Em separação</span>',
+  EXPEDIDO: '<span class="selo sucesso">Expedido</span>', CANCELADO: '<span class="selo">Cancelado</span>',
+  FECHADO: '<span class="selo sucesso">Fechado</span>' }[s] || `<span class="selo">${esc(s)}</span>`);
+const seloTipo = (t) => `<span class="selo ${{ ENTRADA: "sucesso", BAIXA: "perigo", AJUSTE: "alerta", TRANSFERENCIA: "info", BLOQUEIO: "perigo" }[t] || ""}">${esc(t)}</span>`;
+const qtdClasse = (q) => (q > 0 ? "pos" : q < 0 ? "neg" : "");
+
+// ======================================================================= cadastros em memória
+let produtos = [], enderecos = [], motivos = [];
+const produtoPorId = (id) => produtos.find((p) => p.id === Number(id));
+
+function preencherSelects() {
+  document.querySelectorAll("select[data-produtos]").forEach((s) => {
+    const lista = s.dataset.produtos === "ativos" ? produtos.filter((p) => p.ativo) : produtos;
+    const atual = s.value;
+    s.innerHTML = `<option value="">${esc(s.dataset.vazio || "— escolha o produto —")}</option>` +
+      lista.map((p) => `<option value="${p.id}">${esc(p.sku)} · ${esc(p.descricao)}${p.ativo ? "" : " (inativo)"}</option>`).join("");
+    s.value = atual;
+  });
+  document.querySelectorAll("select[data-enderecos]").forEach((s) => {
+    const atual = s.value;
+    s.innerHTML = enderecos.filter((e) => e.ativo).map((e) =>
+      `<option value="${e.id}">${esc(e.codigo)}${e.tipo !== "ARMAZENAGEM" ? " (" + e.tipo.toLowerCase() + ")" : ""}${e.descricao ? " · " + esc(e.descricao) : ""}</option>`).join("");
+    if (atual) s.value = atual;
+  });
+  document.querySelectorAll("select[data-motivos]").forEach((s) => {
+    if (!s.options.length) s.innerHTML = motivos.map((m) => `<option>${m}</option>`).join("");
+  });
+}
+async function carregarCadastros() {
+  [produtos, enderecos] = await Promise.all([api("GET", "/api/produtos"), api("GET", "/api/enderecos")]);
+  preencherSelects();
+}
+const enderecoDoca = () => (enderecos.find((e) => e.tipo === "RECEBIMENTO" && e.ativo) || {}).id || "";
+
+/** Campo de leitura de código de barras: Enter acha o produto e escolhe no select. */
+function ligarLeitor(input, select, depois) {
+  input.addEventListener("keydown", async (ev) => {
+    if (ev.key !== "Enter") return;
+    ev.preventDefault();
+    const codigo = input.value.trim();
+    if (!codigo) return;
+    await executar(null, async () => {
+      const p = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent(codigo));
+      if (![...select.options].some((o) => o.value === String(p.id))) throw new Error(`Produto ${p.sku} está inativo`);
+      select.value = p.id;
+      select.dispatchEvent(new Event("change"));
+      if (depois) depois(p);
+    });
+  });
+}
+const ajustarPasso = (input, produtoId) => {
+  const p = produtoPorId(produtoId);
+  input.step = p && ["KG", "L", "M"].includes(p.unidade) ? "0.001" : "1";
+};
+
+// ======================================================================= navegação
+let paginaAtual = "painel";
+function irPara(pagina) {
+  if (!$(pagina) || !$(pagina).classList.contains("pagina")) pagina = "painel";
+  paginaAtual = pagina;
+  document.querySelectorAll("section.pagina").forEach((s) => s.classList.toggle("ativo", s.id === pagina));
+  document.querySelectorAll("#menu a[data-pagina]").forEach((a) => a.classList.toggle("ativo", a.dataset.pagina === pagina));
+  $("tituloPagina").textContent = $(pagina).dataset.titulo;
+  $("subtituloPagina").textContent = $(pagina).dataset.sub || "";
+  document.title = $(pagina).dataset.titulo + " · Mini WMS";
+  document.body.classList.remove("menu-aberto");
+  atualizar(true);
+}
+window.addEventListener("hashchange", () => irPara(location.hash.slice(1)));
+$("menuBotao").addEventListener("click", () => document.body.classList.toggle("menu-aberto"));
+document.addEventListener("click", (ev) => {
+  if (document.body.classList.contains("menu-aberto") && !ev.target.closest("aside, #menuBotao")) document.body.classList.remove("menu-aberto");
+});
+
+// ======================================================================= painel
+async function carregarPainel() {
+  const [r, movs] = await Promise.all([api("GET", "/api/resumo"), api("GET", "/api/movimentos?limite=10")]);
+  const kpi = (rotulo, valor, classe = "", link = "") =>
+    `<${link ? `a href="${link}"` : "div"} class="kpi ${classe}"><div class="rotulo">${rotulo}</div><div class="valor">${valor}</div></${link ? "a" : "div"}>`;
+  $("kpis").innerHTML =
+    kpi("Produtos ativos", num(r.produtos), "", "#produtos") +
+    kpi("Unidades em estoque", num(r.unidades), "", "#estoque") +
+    kpi("Lotes com saldo", num(r.lotes), "", "#estoque") +
+    kpi("Entradas hoje", num(r.entradas_hoje), "sucesso", "#recebimento") +
+    kpi("Saídas hoje", num(r.saidas_hoje), "", "#movimentos") +
+    kpi("Lotes na doca (armazenar)", num(r.na_doca), r.na_doca ? "alerta" : "", "#recebimento") +
+    kpi("Pedidos em aberto", num(r.pedidos_abertos), r.pedidos_abertos ? "alerta" : "", "#expedicao") +
+    kpi("Lotes vencidos", num(r.vencidos), r.vencidos ? "perigo" : "", "#estoque") +
+    kpi("Vencem em 30 dias", num(r.a_vencer), r.a_vencer ? "alerta" : "", "#estoque") +
+    kpi("Lotes bloqueados", num(r.lotes_bloqueados), r.lotes_bloqueados ? "perigo" : "", "#estoque");
+  $("tabPainelValidade").innerHTML = r.validade.map((l) => `<tr>
+      <td>${esc(l.sku)} <span class="fraco">${esc(l.descricao)}</span></td><td>${esc(l.lote)}</td><td><span class="cod">${esc(l.endereco)}</span></td>
+      <td>${seloValidade(l.validade, l.dias_para_vencer)}</td><td class="num">${num(l.quantidade)}</td></tr>`).join("")
+    || vazio(5, "Nenhum lote vencido ou perto de vencer 👍");
+  $("tabPainelMinimo").innerHTML = r.abaixo_minimo.map((p) => `<tr>
+      <td>${esc(p.sku)}</td><td>${esc(p.descricao)}</td><td class="num neg">${num(p.saldo)}</td>
+      <td class="num">${num(p.estoque_min)}</td><td class="num">${num(p.estoque_min - p.saldo)} ${esc(p.unidade)}</td></tr>`).join("")
+    || vazio(5, "Todos os produtos acima do mínimo");
+  $("tabPainelMov").innerHTML = movs.map(linhaMovCurta).join("") || vazio(8, "Nenhum movimento ainda");
+  contadoresMenu(r);
+}
+function contadoresMenu(r) {
+  $("cntDoca").textContent = r.na_doca || "";
+  $("cntPedidos").textContent = r.pedidos_abertos || "";
+  $("cntInv").textContent = r.inventarios_abertos || "";
+}
+const linhaMovCurta = (m) => `<tr>
+  <td class="fraco">${dataHoraBR(m.data_hora)}</td><td>${seloTipo(m.tipo)}</td>
+  <td>${esc(m.sku)} <span class="fraco">${esc(m.descricao)}</span></td><td>${esc(m.lote)}</td><td><span class="cod">${esc(m.endereco)}</span></td>
+  <td class="num ${qtdClasse(m.quantidade)}">${m.quantidade ? sinal(m.quantidade) : ""}</td>
+  <td>${esc([m.documento, m.motivo].filter(Boolean).join(" · "))}</td><td class="fraco">${esc(m.origem)}</td></tr>`;
+
+// ======================================================================= posição de estoque
+let estoqueLinhas = [], filtroEstoqueInicial = "";
 async function carregarEstoque() {
-  const linhas = await api("GET", "/api/estoque");
-  const total = {};
-  linhas.forEach((l) => (total[l.produto_id] = (total[l.produto_id] || 0) + (l.quantidade || 0)));
-  let anterior = null;
-  $("tabEstoque").innerHTML = linhas.map((l) => {
-    const primeiro = l.produto_id !== anterior;
-    anterior = l.produto_id;
-    const abaixo = total[l.produto_id] < l.estoque_min;
-    return `<tr>
-      <td>${primeiro ? esc(l.sku) : ""}</td>
-      <td>${primeiro ? esc(l.descricao) : ""}</td>
-      <td>${esc(l.lote || "-")}</td>
-      <td class="${classeValidade(l.dias_para_vencer)}">${dataBR(l.validade)}</td>
-      <td>${l.quantidade ?? 0}</td>
-      <td>${l.tags || ""}</td>
-      <td class="${abaixo ? "vencido" : ""}">${primeiro ? total[l.produto_id] + " " + esc(l.unidade) + (abaixo ? " (abaixo do mínimo)" : "") : ""}</td>
-    </tr>`;
-  }).join("");
+  if (filtroEstoqueInicial) { $("estFiltro").value = filtroEstoqueInicial; filtroEstoqueInicial = ""; }
+  estoqueLinhas = await api("GET", "/api/estoque");
+  desenharEstoque();
+}
+function desenharEstoque() {
+  const busca = $("estBusca").value.trim().toLowerCase();
+  const filtro = $("estFiltro").value;
+  const semSaldo = $("estSemSaldo").checked;
+  const grupos = new Map();
+  estoqueLinhas.forEach((l) => {
+    if (!grupos.has(l.produto_id)) grupos.set(l.produto_id, { p: l, lotes: [], total: 0 });
+    if (l.lote_id) { const g = grupos.get(l.produto_id); g.lotes.push(l); g.total += l.quantidade; }
+  });
+  let html = "", nLotes = 0;
+  for (const g of grupos.values()) {
+    const abaixo = g.p.estoque_min > 0 && g.total < g.p.estoque_min;
+    const lotes = g.lotes.filter((l) => {
+      if (busca && ![g.p.sku, g.p.descricao, l.lote, l.endereco].some((t) => String(t || "").toLowerCase().includes(busca))) return false;
+      if (filtro === "vencidos") return l.dias_para_vencer !== null && l.dias_para_vencer < 0;
+      if (filtro === "validade") return l.dias_para_vencer !== null && l.dias_para_vencer <= 30;
+      if (filtro === "bloqueados") return l.status === "BLOQUEADO";
+      if (filtro === "doca") return l.tipo_endereco === "RECEBIMENTO";
+      if (filtro === "reservados") return l.reservado > 0;
+      if (filtro === "minimo") return abaixo;
+      return true;
+    });
+    const produtoCasa = !busca || [g.p.sku, g.p.descricao].some((t) => t.toLowerCase().includes(busca));
+    const mostrarVazio = semSaldo && !g.lotes.length && produtoCasa && (!filtro || (filtro === "minimo" && abaixo));
+    if (!lotes.length && !mostrarVazio) continue;
+    html += `<tr class="grupo"><td colspan="4">${esc(g.p.sku)} · ${esc(g.p.descricao)}${g.p.ativo ? "" : ' <span class="selo">inativo</span>'}</td>
+      <td class="num">${num(g.total)} ${esc(g.p.unidade)}</td>
+      <td colspan="4">${g.p.estoque_min > 0 ? `<span class="${abaixo ? "selo perigo" : "fraco"}">mínimo ${num(g.p.estoque_min)}${abaixo ? " · repor" : ""}</span>` : ""}</td></tr>`;
+    if (!lotes.length) html += `<tr><td colspan="9" class="fraco" style="padding-left:24px">Sem saldo em estoque</td></tr>`;
+    lotes.forEach((l) => {
+      nLotes++;
+      const disp = Math.max(l.quantidade - l.reservado - l.tags, 0);
+      html += `<tr>
+        <td style="padding-left:24px"><b>${esc(l.lote)}</b></td>
+        <td>${seloValidade(l.validade, l.dias_para_vencer)}</td>
+        <td><span class="cod">${esc(l.endereco)}</span> ${l.tipo_endereco === "RECEBIMENTO" ? '<span class="selo alerta">armazenar</span>' : ""}</td>
+        <td>${seloStatus(l.status)}</td>
+        <td class="num">${num(l.quantidade)}</td>
+        <td class="num">${l.reservado ? num(l.reservado) : ""}</td>
+        <td class="num">${l.tags ? num(l.tags) : ""}</td>
+        <td class="num"><b>${num(disp)}</b></td>
+        <td class="acoes">
+          <button class="pequeno" onclick="abrirTransferir(${l.lote_id})">Transferir</button>
+          ${l.status === "BLOQUEADO"
+            ? `<button class="pequeno" onclick="liberarLote(${l.lote_id}, this)">Liberar</button>`
+            : `<button class="pequeno" onclick="abrirBloquear(${l.lote_id})">Bloquear</button>`}
+          <button class="pequeno" onclick="abrirBaixaLote(${l.lote_id})">Baixar</button>
+        </td></tr>`;
+    });
+  }
+  $("tabEstoque").innerHTML = html || vazio(9, filtro || busca ? "Nada encontrado com esse filtro" : "Estoque vazio. Comece cadastrando produtos e registrando um recebimento.");
+}
+["estBusca", "estFiltro", "estSemSaldo"].forEach((id) => $(id).addEventListener("input", desenharEstoque));
+
+// ---- ações de lote (diálogos)
+let loteSelecionado = null;
+async function buscarLoteTela(loteId) {
+  if (!estoqueLinhas.length) estoqueLinhas = await api("GET", "/api/estoque");
+  return estoqueLinhas.find((l) => l.lote_id === loteId);
+}
+const descreverLote = (l) => `${l.sku} · ${l.descricao} — lote ${l.lote}, ${num(l.quantidade)} ${l.unidade} em ${l.endereco}`;
+
+async function abrirTransferir(loteId) {
+  loteSelecionado = await buscarLoteTela(loteId);
+  if (!loteSelecionado) return;
+  $("formTransferir").reset();
+  $("trInfo").textContent = descreverLote(loteSelecionado);
+  const destino = enderecos.find((e) => e.ativo && e.tipo === "ARMAZENAGEM" && e.codigo !== loteSelecionado.endereco);
+  if (destino) $("trDestino").value = destino.id;
+  $("dlgTransferir").showModal();
+}
+$("formTransferir").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  executar(ev.submitter, async () => {
+    const r = await api("POST", `/api/lotes/${loteSelecionado.lote_id}/transferir`, { endereco_id: Number($("trDestino").value) });
+    toast(`Lote ${r.lote}: ${r.de} → ${r.para}`);
+    $("dlgTransferir").close();
+    atualizar(true);
+  });
+});
+
+async function abrirBloquear(loteId) {
+  loteSelecionado = await buscarLoteTela(loteId);
+  if (!loteSelecionado) return;
+  $("formBloquear").reset();
+  $("blInfo").textContent = descreverLote(loteSelecionado) + ". Lote bloqueado não sai na baixa por quantidade nem entra em pedidos.";
+  $("dlgBloquear").showModal();
+}
+$("formBloquear").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  executar(ev.submitter, async () => {
+    await api("POST", `/api/lotes/${loteSelecionado.lote_id}/bloquear`, { motivo: $("blMotivo").value });
+    toast(`Lote ${loteSelecionado.lote} bloqueado`, "alerta");
+    $("dlgBloquear").close();
+    atualizar(true);
+  });
+});
+async function liberarLote(loteId, botao) {
+  const l = await buscarLoteTela(loteId);
+  if (!(await confirmar("Liberar lote", `Liberar o lote ${l.lote} (${l.sku})? Ele volta a sair na baixa FEFO e nos pedidos.`, "Liberar", "sucesso"))) return;
+  await executar(botao, async () => {
+    await api("POST", `/api/lotes/${loteId}/liberar`);
+    toast(`Lote ${l.lote} liberado`);
+    atualizar(true);
+  });
 }
 
-// ---------------------------------------------------------------- produtos
-let produtos = [];
-
-async function carregarProdutos() {
-  produtos = await api("GET", "/api/produtos");
-  $("tabProdutos").innerHTML = produtos.map((p) => `<tr>
-    <td>${esc(p.sku)}</td><td>${esc(p.descricao)}</td><td>${esc(p.ean)}</td>
-    <td>${esc(p.unidade)}</td><td>${p.estoque_min}</td>
-    <td><button onclick="editarProduto(${p.id})">Editar</button>
-        <button onclick="excluirProduto(${p.id})">Excluir</button></td></tr>`).join("");
-  const opcoes = '<option value="">-- produto --</option>' +
-    produtos.map((p) => `<option value="${p.id}">${esc(p.sku)} - ${esc(p.descricao)}</option>`).join("");
-  ["eProduto", "bProduto", "iProduto"].forEach((id) => { const v = $(id).value; $(id).innerHTML = opcoes; $(id).value = v; });
+async function abrirBaixaLote(loteId) {
+  loteSelecionado = await buscarLoteTela(loteId);
+  if (!loteSelecionado) return;
+  $("formBaixaLote").reset();
+  const disp = Math.max(loteSelecionado.quantidade - loteSelecionado.reservado - loteSelecionado.tags, 0);
+  $("blqInfo").textContent = descreverLote(loteSelecionado) + `. Disponível: ${num(disp)}.` +
+    (loteSelecionado.status === "BLOQUEADO" ? " Lote bloqueado: só sai por AVARIA, PERDA ou VENCIMENTO." : "");
+  $("blqQtd").max = disp;
+  ajustarPasso($("blqQtd"), loteSelecionado.produto_id);
+  if (loteSelecionado.status === "BLOQUEADO") $("blqMotivo").value = "AVARIA";
+  if (loteSelecionado.dias_para_vencer !== null && loteSelecionado.dias_para_vencer < 0) $("blqMotivo").value = "VENCIMENTO";
+  $("dlgBaixaLote").showModal();
 }
+$("formBaixaLote").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  executar(ev.submitter, async () => {
+    const r = await api("POST", "/api/baixas", { lote_id: loteSelecionado.lote_id, quantidade: Number($("blqQtd").value),
+      motivo: $("blqMotivo").value, documento: $("blqDoc").value });
+    toast(`Baixa de ${num(r.lotes[0].quantidade)} do lote ${r.lotes[0].lote} (${$("blqMotivo").value})`);
+    $("dlgBaixaLote").close();
+    atualizar(true);
+  });
+});
 
-async function salvarProduto() {
-  const dados = { sku: $("pSku").value, descricao: $("pDesc").value, ean: $("pEan").value,
-                  unidade: $("pUn").value, estoque_min: Number($("pMin").value) };
-  if ($("pId").value) await api("PUT", "/api/produtos/" + $("pId").value, dados);
-  else await api("POST", "/api/produtos", dados);
-  mensagem("Produto salvo");
-  limparProduto();
-  carregarProdutos();
+// ======================================================================= recebimento
+let lotesDoProdutoEntrada = [];
+ligarLeitor($("eCodigo"), $("eProduto"), () => $("eLote").focus());
+$("eProduto").addEventListener("change", async () => {
+  const id = $("eProduto").value;
+  ajustarPasso($("eQtd"), id);
+  lotesDoProdutoEntrada = [];
+  $("eLotesExistentes").innerHTML = "";
+  if (!id) return infoEntrada();
+  const d = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent(produtoPorId(id).sku)).catch(() => ({ lotes: [] }));
+  lotesDoProdutoEntrada = d.lotes;
+  $("eLotesExistentes").innerHTML = d.lotes.map((l) => `<option value="${esc(l.lote)}">val. ${dataBR(l.validade)} · <span class="cod">${esc(l.endereco)}</span></option>`).join("");
+  infoEntrada();
+});
+$("eLote").addEventListener("input", infoEntrada);
+function infoEntrada() {
+  const lote = $("eLote").value.trim().toUpperCase();
+  const existente = lotesDoProdutoEntrada.find((l) => l.lote === lote);
+  const info = $("eInfo");
+  info.className = "aviso";
+  if (existente) {
+    if (existente.validade) $("eValidade").value = existente.validade;
+    const endereco = enderecos.find((e) => e.codigo === existente.endereco);
+    if (endereco) $("eEndereco").value = endereco.id;
+    info.innerHTML = `Lote <b>${esc(lote)}</b> já existe (saldo ${num(existente.quantidade)}, validade ${dataBR(existente.validade)}, endereço ${esc(existente.endereco)}): a quantidade será somada a ele.`;
+  } else if (lote && $("eProduto").value) {
+    info.innerHTML = `Lote novo: será criado no endereço escolhido.`;
+  } else {
+    info.innerHTML = "";
+  }
 }
-
-function editarProduto(id) {
-  const p = produtos.find((x) => x.id === id);
-  $("pId").value = p.id; $("pSku").value = p.sku; $("pDesc").value = p.descricao;
-  $("pEan").value = p.ean || ""; $("pUn").value = p.unidade; $("pMin").value = p.estoque_min;
-}
-
-function limparProduto() {
-  ["pId", "pSku", "pDesc", "pEan"].forEach((id) => ($(id).value = ""));
-  $("pUn").value = "UN"; $("pMin").value = 0;
-}
-
-async function excluirProduto(id) {
-  if (!confirm("Excluir produto?")) return;
-  await api("DELETE", "/api/produtos/" + id);
-  carregarProdutos();
-}
-
-// ---------------------------------------------------------------- entrada
-async function darEntrada() {
+$("eValidade").addEventListener("change", () => {
+  const d = diasAte($("eValidade").value);
+  if (d !== null && d < 0) { $("eInfo").className = "aviso perigo"; $("eInfo").textContent = "Atenção: essa validade já passou. O lote entrará vencido."; }
+});
+aoEnviar($("formEntrada"), async () => {
   const r = await api("POST", "/api/entradas", {
-    produto_id: Number($("eProduto").value), lote: $("eLote").value,
-    validade: $("eVal").value || null, quantidade: Number($("eQtd").value),
+    produto_id: Number($("eProduto").value), lote: $("eLote").value, validade: $("eValidade").value || null,
+    quantidade: Number($("eQtd").value), endereco_id: Number($("eEndereco").value) || null, documento: $("eDoc").value,
+    meio: $("eCodigo").value ? "BARRAS" : "MANUAL",
   });
-  mensagem(`Entrada: ${r.quantidade} de ${r.sku}, lote ${r.lote}`);
-  $("eQtd").value = "";
+  toast(`Entrada registrada: ${num(r.quantidade)} de ${r.sku}, lote ${r.lote} em ${r.endereco} (saldo do lote ${num(r.saldo)})`);
+  avisar(r.avisos);
+  carregarRecebimento();
+});
+$("formEntrada").addEventListener("reset", () => setTimeout(() => {
+  lotesDoProdutoEntrada = []; $("eLotesExistentes").innerHTML = ""; $("eInfo").innerHTML = ""; $("eInfo").className = "aviso";
+  $("eEndereco").value = enderecoDoca();
+  $("eCodigo").focus();
+}));
+
+async function carregarRecebimento() {
+  const [est, movs] = await Promise.all([api("GET", "/api/estoque"), api("GET", `/api/movimentos?tipo=ENTRADA&de=${hojeISO()}&limite=50`)]);
+  estoqueLinhas = est;
+  const doca = est.filter((l) => l.lote_id && l.tipo_endereco === "RECEBIMENTO");
+  $("tabDoca").innerHTML = doca.map((l) => `<tr>
+      <td>${esc(l.sku)} <span class="fraco">${esc(l.descricao)}</span></td><td>${esc(l.lote)}</td>
+      <td>${seloValidade(l.validade, l.dias_para_vencer)}</td><td class="num">${num(l.quantidade)}</td>
+      <td class="acoes"><button class="pequeno primario" onclick="abrirTransferir(${l.lote_id})">Armazenar</button></td></tr>`).join("")
+    || vazio(5, "Nada aguardando armazenagem");
+  $("tabEntradasHoje").innerHTML = movs.map((m) => `<tr>
+      <td>${horaBR(m.data_hora)}</td><td>${esc(m.sku)} <span class="fraco">${esc(m.descricao)}</span></td><td>${esc(m.lote)}</td>
+      <td class="num pos">+${num(m.quantidade)}</td><td>${esc(m.documento)}</td><td class="fraco">${esc(m.origem)} · ${esc(m.meio)}</td></tr>`).join("")
+    || vazio(6, "Nenhuma entrada hoje");
 }
 
-// ---------------------------------------------------------------- baixa
-async function acharProdutoBaixa() {
-  const p = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent($("bCodigo").value));
-  $("bProduto").value = p.id;
-  $("bQtd").focus();
-}
-
+// ======================================================================= baixa
+ligarLeitor($("bCodigo"), $("bProduto"), () => $("bQtd").focus());
+let temporizadorPrevia;
+function agendarPrevia() { clearTimeout(temporizadorPrevia); temporizadorPrevia = setTimeout(previaFefo, 300); }
+["bProduto", "bQtd", "bMotivo"].forEach((id) => $(id).addEventListener("input", agendarPrevia));
+$("bProduto").addEventListener("change", () => ajustarPasso($("bQtd"), $("bProduto").value));
 async function previaFefo() {
-  const plano = await api("GET", `/api/fefo?produto_id=${$("bProduto").value}&quantidade=${$("bQtd").value}&motivo=${$("bMotivo").value}`);
-  $("bPrevia").innerHTML = "<p>Sairá dos lotes:</p><ul>" +
-    plano.map((l) => `<li>Lote ${esc(l.lote)} (validade ${dataBR(l.validade)}): ${l.quantidade}</li>`).join("") + "</ul>";
+  const produto = $("bProduto").value, qtd = Number($("bQtd").value);
+  const caixa = $("bPrevia");
+  if (!produto || !(qtd > 0)) { caixa.innerHTML = ""; return; }
+  try {
+    const plano = await api("GET", `/api/fefo?produto_id=${produto}&quantidade=${qtd}&motivo=${$("bMotivo").value}`);
+    caixa.className = "aviso";
+    caixa.innerHTML = `<b>Vai sair dos lotes (FEFO):</b><table><tr><th>Lote</th><th>Validade</th><th>Endereço</th><th class="num">Qtd</th></tr>` +
+      plano.map((l) => `<tr><td>${esc(l.lote)}</td><td>${dataBR(l.validade)}</td><td><span class="cod">${esc(l.endereco)}</span></td><td class="num">${num(l.quantidade)}</td></tr>`).join("") + "</table>";
+  } catch (e) {
+    caixa.className = "aviso perigo";
+    caixa.textContent = e.message;
+  }
 }
-
-async function darBaixa() {
+aoEnviar($("formBaixa"), async () => {
+  const p = produtoPorId($("bProduto").value);
+  if (!(await confirmar("Confirmar baixa", `Baixar ${num($("bQtd").value)} ${p.unidade} de ${p.sku} · ${p.descricao}\nMotivo: ${$("bMotivo").value}`, "Confirmar baixa"))) return false;
   const r = await api("POST", "/api/baixas", {
-    produto_id: Number($("bProduto").value), quantidade: Number($("bQtd").value),
-    motivo: $("bMotivo").value, meio: $("bCodigo").value ? "BARRAS" : "MANUAL",
+    produto_id: p.id, quantidade: Number($("bQtd").value), motivo: $("bMotivo").value,
+    documento: $("bDoc").value, meio: $("bCodigo").value ? "BARRAS" : "MANUAL",
   });
-  mensagem("Baixa feita: " + r.lotes.map((l) => `${l.quantidade} do lote ${l.lote}`).join(", "));
-  $("bPrevia").innerHTML = ""; $("bQtd").value = ""; $("bCodigo").value = "";
+  toast("Baixa feita: " + r.lotes.map((l) => `${num(l.quantidade)} do lote ${l.lote}`).join(", "));
+});
+$("formBaixa").addEventListener("reset", () => setTimeout(() => { $("bPrevia").innerHTML = ""; $("bCodigo").focus(); }));
+
+aoEnviar($("formEpc"), async () => {
+  const epcs = $("tEpcs").value.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
+  if (!epcs.length) throw new Error("Informe pelo menos um EPC");
+  const r = await api("POST", "/api/baixas", { epcs, motivo: $("tMotivo").value, documento: $("tDoc").value });
+  const ok = r.tags.filter((t) => t.ok), erros = r.tags.filter((t) => !t.ok);
+  toast(`${ok.length} de ${r.tags.length} tag(s) baixada(s)`, erros.length ? "alerta" : "ok");
+  erros.forEach((t) => toast(`${t.epc}: ${t.erro}`, "erro"));
+  avisar([...new Set(ok.flatMap((t) => t.avisos))]);
+});
+
+// ======================================================================= pedidos / expedição
+let itensNovoPedido = [], pedidoAtual = null, pedidos = [];
+const disponivelProduto = (id) => estoqueLinhas.filter((l) => l.produto_id === id && l.lote_id && l.status === "LIBERADO" && !(l.dias_para_vencer < 0))
+  .reduce((s, l) => s + Math.max(l.quantidade - l.reservado - l.tags, 0), 0);
+
+ligarLeitor($("pdCodigo"), $("pdProduto"), () => $("pdQtd").focus());
+$("pdProduto").addEventListener("change", () => ajustarPasso($("pdQtd"), $("pdProduto").value));
+function adicionarItemPedido() {
+  const p = produtoPorId($("pdProduto").value), qtd = Number($("pdQtd").value);
+  if (!p) return toast("Escolha o produto do item", "erro");
+  if (!(qtd > 0)) return toast("Informe a quantidade do item", "erro");
+  const existente = itensNovoPedido.find((i) => i.produto_id === p.id);
+  if (existente) existente.quantidade += qtd; else itensNovoPedido.push({ produto_id: p.id, quantidade: qtd });
+  $("pdCodigo").value = ""; $("pdProduto").value = ""; $("pdQtd").value = "";
+  desenharItensPedido();
+  $("pdCodigo").focus();
+}
+$("pdAdicionar").addEventListener("click", adicionarItemPedido);
+$("pdQtd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); adicionarItemPedido(); } });
+function desenharItensPedido() {
+  $("tabPedidoNovo").innerHTML = itensNovoPedido.map((i, n) => {
+    const p = produtoPorId(i.produto_id), disp = disponivelProduto(i.produto_id);
+    return `<tr><td>${esc(p.sku)} <span class="fraco">${esc(p.descricao)}</span></td><td class="num">${num(i.quantidade)} ${esc(p.unidade)}</td>
+      <td class="num ${disp < i.quantidade ? "neg" : ""}">${num(disp)}</td>
+      <td class="acoes"><button type="button" class="link perigo-texto" onclick="itensNovoPedido.splice(${n},1);desenharItensPedido()">remover</button></td></tr>`;
+  }).join("") || vazio(4, "Nenhum item adicionado");
+}
+aoEnviar($("formPedido"), async () => {
+  if (!itensNovoPedido.length) throw new Error("Adicione pelo menos um item ao pedido");
+  const r = await api("POST", "/api/pedidos", { cliente: $("pdCliente").value, numero: $("pdNumero").value,
+    observacao: $("pdObs").value, itens: itensNovoPedido });
+  toast(`Pedido ${r.numero} criado`);
+  pedidoAtual = r.id;
+  await carregarExpedicao();
+});
+$("formPedido").addEventListener("reset", () => setTimeout(() => { itensNovoPedido = []; desenharItensPedido(); $("pdCliente").focus(); }));
+$("pdFiltro").addEventListener("change", desenharListaPedidos);
+
+async function carregarExpedicao() {
+  [pedidos, estoqueLinhas] = await Promise.all([api("GET", "/api/pedidos"), api("GET", "/api/estoque")]);
+  desenharListaPedidos();
+  desenharItensPedido();
+  if (pedidoAtual) await carregarPedido(pedidoAtual);
+}
+function desenharListaPedidos() {
+  const f = $("pdFiltro").value;
+  const lista = pedidos.filter((p) => (f === "ativos" ? ["ABERTO", "SEPARANDO"].includes(p.status) : !f || p.status === f));
+  $("listaPedidos").innerHTML = lista.map((p) => `<li class="item-lista ${p.id === pedidoAtual ? "ativo" : ""}" onclick="carregarPedido(${p.id})">
+      <div><b>${esc(p.numero)}</b> · ${esc(p.cliente)}<div class="fraco">${dataHoraBR(p.criado_em)} · ${p.itens} item(ns), ${num(p.unidades)} un.</div></div>
+      <span style="margin-left:auto">${seloStatus(p.status)}</span></li>`).join("")
+    || `<li class="vazio">Nenhum pedido ${f === "ativos" ? "em aberto" : ""}</li>`;
+}
+let conferidos = new Set();
+async function carregarPedido(id) {
+  if (id !== pedidoAtual) conferidos = new Set();
+  pedidoAtual = id;
+  desenharListaPedidos();
+  let d;
+  try { d = await api("GET", "/api/pedidos/" + id); }
+  catch { pedidoAtual = null; $("pedidoDetalhe").innerHTML = '<p class="vazio">Escolha um pedido na lista ou crie um novo.</p>'; return; }
+  const p = d.pedido, st = p.status;
+  const passos = ["ABERTO", "SEPARANDO", "EXPEDIDO"];
+  const idx = passos.indexOf(st);
+  const passo = (nome, i) => `<span class="${st === "CANCELADO" ? "" : i < idx || st === "EXPEDIDO" ? "feito" : i === idx ? "atual" : ""}">${i + 1}. ${nome}</span>`;
+  const separacao = d.separacao.map((s, i) => `<tr>
+      ${st === "SEPARANDO" ? `<td class="nao-imprimir"><input type="checkbox" ${conferidos.has(i) ? "checked" : ""} onchange="this.checked?conferidos.add(${i}):conferidos.delete(${i});atualizarBotaoExpedir(${d.separacao.length})"></td>` : ""}
+      <td><b><span class="cod">${esc(s.endereco)}</span></b></td><td>${esc(s.sku)} <span class="fraco">${esc(s.descricao)}</span></td>
+      <td>${esc(s.lote)}</td><td>${dataBR(s.validade)}</td><td class="num"><b>${num(s.quantidade)}</b> ${esc(s.unidade)}</td></tr>`).join("");
+  $("pedidoDetalhe").innerHTML = `
+    <div class="card-titulo" style="font-size:17px"><span class="cod">Pedido ${esc(p.numero)}</span> ${seloStatus(st)}
+      <span class="acoes nao-imprimir">
+        ${st === "ABERTO" ? `<button class="primario" onclick="acaoPedido('liberar', this)">Liberar para separação</button>` : ""}
+        ${st === "SEPARANDO" ? `<button class="sucesso" id="btExpedir" onclick="acaoPedido('expedir', this)">Confirmar expedição</button>` : ""}
+        ${d.separacao.length ? `<button onclick="window.print()">Imprimir lista</button>` : ""}
+        ${["ABERTO", "SEPARANDO"].includes(st) ? `<button onclick="acaoPedido('cancelar', this)">Cancelar pedido</button>` : ""}
+      </span></div>
+    <div class="passos">${passos.map((n, i) => passo(["Pedido aberto", "Em separação", "Expedido"][i], i)).join("")}${st === "CANCELADO" ? '<span class="selo perigo">Cancelado</span>' : ""}</div>
+    <p style="margin:0 0 12px"><b>Cliente:</b> ${esc(p.cliente)}${p.observacao ? ` · <b>Obs.:</b> ${esc(p.observacao)}` : ""}<br>
+      <span class="fraco">Criado ${dataHoraBR(p.criado_em)}${p.liberado_em ? " · liberado " + dataHoraBR(p.liberado_em) : ""}${p.expedido_em ? " · expedido " + dataHoraBR(p.expedido_em) : ""}</span></p>
+    <div class="tabela"><table><thead><tr><th>Produto</th><th class="num">Pedido</th>${st === "ABERTO" ? '<th class="num">Disponível</th>' : ""}</tr></thead><tbody>
+      ${d.itens.map((i) => { const disp = disponivelProduto(i.produto_id); return `<tr><td>${esc(i.sku)} <span class="fraco">${esc(i.descricao)}</span></td>
+        <td class="num">${num(i.quantidade)} ${esc(i.unidade)}</td>${st === "ABERTO" ? `<td class="num ${disp < i.quantidade ? "neg" : ""}">${num(disp)}</td>` : ""}</tr>`; }).join("")}
+    </tbody></table></div>
+    ${st === "ABERTO" ? '<p class="aviso">Ao liberar, o sistema reserva os lotes por FEFO e gera a lista de separação. O reservado não sai em outras baixas.</p>' : ""}
+    ${d.separacao.length ? `<h3 style="margin:18px 0 8px;font-size:15px">${st === "EXPEDIDO" ? "Lotes expedidos" : "Lista de separação (ordem de endereço)"}</h3>
+      <div class="tabela"><table><thead><tr>${st === "SEPARANDO" ? '<th class="nao-imprimir">Ok</th>' : ""}<th>Endereço</th><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Qtd</th></tr></thead>
+      <tbody>${separacao}</tbody></table></div>
+      ${st === "SEPARANDO" ? '<p class="fraco nao-imprimir">Marque cada linha conforme separa. A expedição é liberada quando tudo estiver conferido.</p>' : ""}` : ""}`;
+  if (st === "SEPARANDO") atualizarBotaoExpedir(d.separacao.length);
+}
+function atualizarBotaoExpedir(total) {
+  const b = $("btExpedir");
+  if (b) { b.disabled = conferidos.size < total; b.title = b.disabled ? "Confira todas as linhas da lista de separação" : ""; }
+}
+async function acaoPedido(acao, botao) {
+  const p = pedidos.find((x) => x.id === pedidoAtual);
+  const textos = {
+    liberar: ["Liberar para separação", `Reservar estoque (FEFO) para o pedido ${p.numero}?`, "Liberar", "primario"],
+    expedir: ["Confirmar expedição", `Baixar do estoque os lotes separados do pedido ${p.numero}? Isso não pode ser desfeito.`, "Expedir", "sucesso"],
+    cancelar: ["Cancelar pedido", `Cancelar o pedido ${p.numero}? As reservas voltam para o estoque disponível.`, "Cancelar pedido", "perigo"],
+  }[acao];
+  if (!(await confirmar(...textos))) return;
+  await executar(botao, async () => {
+    const r = await api("POST", `/api/pedidos/${pedidoAtual}/${acao}`);
+    toast(`Pedido ${r.numero}: ${r.status.toLowerCase()}`);
+    conferidos = new Set();
+    await carregarExpedicao();
+  });
 }
 
-async function baixaEpc() {
-  const r = await api("POST", "/api/baixas", { epcs: [$("bEpc").value], motivo: $("bMotivo").value });
-  const t = r.tags[0];
-  if (t.ok) mensagem(`Tag baixada: ${t.sku} lote ${t.lote}`); else mensagem(t.erro, true);
-  $("bEpc").value = "";
-}
-
-// ---------------------------------------------------------------- inventário
+// ======================================================================= inventário
+let inventarioAtual = null;
 async function carregarInventarios() {
   const lista = await api("GET", "/api/inventarios");
   const atual = $("iLista").value;
-  $("iLista").innerHTML = '<option value="">-- escolha um inventário --</option>' +
-    lista.map((i) => `<option value="${i.id}">#${i.id} ${esc(i.nome)} (${i.status})</option>`).join("");
+  $("iLista").innerHTML = '<option value="">— escolha um inventário —</option>' +
+    lista.map((i) => `<option value="${i.id}">#${i.id} ${esc(i.nome)} · ${i.status.toLowerCase()} · ${i.itens} contagem(ns)</option>`).join("");
   $("iLista").value = atual;
 }
-
-async function abrirInventario() {
-  const r = await api("POST", "/api/inventarios", { nome: $("iNome").value || "Inventário" });
+aoEnviar($("formNovoInv"), async () => {
+  const r = await api("POST", "/api/inventarios", { nome: $("iNome").value });
+  toast("Inventário aberto. Registre as contagens no PC ou no coletor.");
   await carregarInventarios();
   $("iLista").value = r.id;
-  carregarInventario();
-}
+  await carregarInventario();
+});
+$("iLista").addEventListener("change", () => carregarInventario());
+$("iFiltro").addEventListener("change", () => carregarInventario());
+ligarLeitor($("iCodigo"), $("iProduto"), () => $("iLote").focus());
+$("iProduto").addEventListener("change", async () => {
+  const p = produtoPorId($("iProduto").value);
+  $("iLote").innerHTML = "";
+  if (!p) return;
+  ajustarPasso($("iQtd"), p.id);
+  const d = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent(p.sku)).catch(() => ({ lotes: [] }));
+  $("iLote").innerHTML = d.lotes.length
+    ? d.lotes.map((l) => `<option value="${l.id}">${esc(l.lote)} · val. ${dataBR(l.validade)} · <span class="cod">${esc(l.endereco)}</span> · sistema ${num(l.quantidade)}</option>`).join("")
+    : '<option value="">Produto sem lote cadastrado</option>';
+});
+aoEnviar($("formContagem"), async () => {
+  const r = await api("POST", `/api/inventarios/${inventarioAtual}/contagens`, {
+    lote_id: Number($("iLote").value), quantidade: Number($("iQtd").value), meio: $("iCodigo").value ? "BARRAS" : "MANUAL" });
+  toast(`Contado ${num(r.quantidade)} no lote ${r.lote}`);
+  await carregarInventario();
+});
+$("formContagem").addEventListener("reset", () => setTimeout(() => { $("iLote").innerHTML = ""; $("iCodigo").focus(); }));
 
 async function carregarInventario() {
   const id = $("iLista").value;
+  inventarioAtual = id ? Number(id) : null;
   $("iDetalhe").style.display = id ? "block" : "none";
   if (!id) return;
   const d = await api("GET", "/api/inventarios/" + id);
-  $("iTitulo").textContent = `Inventário #${d.inventario.id} - ${d.inventario.nome} - ${d.inventario.status}`;
-  $("tabConfronto").innerHTML = d.confronto.map((c) => `<tr>
-    <td>${esc(c.sku)}</td><td>${esc(c.descricao)}</td><td>${esc(c.lote)}</td><td>${dataBR(c.validade)}</td>
-    <td>${c.sistema}</td><td>${c.contado}</td>
-    <td class="${c.diferenca > 0 ? "pos" : c.diferenca < 0 ? "neg" : ""}">${c.diferenca > 0 ? "+" : ""}${c.diferenca}</td></tr>`).join("");
-  const aberto = d.inventario.status === "ABERTO";
+  const inv = d.inventario, aberto = inv.status === "ABERTO";
+  const contados = d.confronto.filter((c) => c.foi_contado);
+  const divergentes = d.confronto.filter((c) => c.diferenca !== 0);
+  const acuracidade = d.confronto.length ? Math.round(100 * (d.confronto.length - divergentes.length) / d.confronto.length) : 100;
+  $("iKpis").innerHTML = `
+    <div class="kpi"><div class="rotulo">#${inv.id} ${esc(inv.nome)}</div><div class="valor" style="font-size:18px">${seloStatus(inv.status)}</div><div class="fraco">aberto ${dataHoraBR(inv.aberto_em)}${inv.fechado_em ? "<br>encerrado " + dataHoraBR(inv.fechado_em) : ""}</div></div>
+    <div class="kpi"><div class="rotulo">Lotes no confronto</div><div class="valor">${d.confronto.length}</div></div>
+    <div class="kpi ${contados.length < d.confronto.length ? "alerta" : "sucesso"}"><div class="rotulo">Lotes contados</div><div class="valor">${contados.length}</div></div>
+    <div class="kpi ${divergentes.length ? "perigo" : "sucesso"}"><div class="rotulo">Com divergência</div><div class="valor">${divergentes.length}</div></div>
+    <div class="kpi"><div class="rotulo">Acuracidade</div><div class="valor">${acuracidade}%</div></div>`;
+  $("iCardContagem").style.display = aberto ? "" : "none";
+  const f = $("iFiltro").value;
+  const linhas = d.confronto.filter((c) => (f === "dif" ? c.diferenca !== 0 : f === "nao" ? !c.foi_contado : true));
+  $("tabConfronto").innerHTML = linhas.map((c) => `<tr>
+    <td><span class="cod">${esc(c.endereco)}</span></td><td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td><td>${dataBR(c.validade)}</td>
+    <td class="num">${num(c.sistema)}</td><td class="num">${c.foi_contado ? num(c.contado) : '<span class="fraco">não contado</span>'}</td>
+    <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(7, "Nada para mostrar");
   $("tabContagens").innerHTML = d.contagens.map((c) => `<tr>
-    <td>${esc(c.data_hora)}</td><td>${esc(c.sku)}</td><td>${esc(c.lote)}</td><td>${c.quantidade}</td>
-    <td>${esc(c.epc)}</td><td>${esc(c.origem)}</td><td>${esc(c.meio)}</td>
-    <td>${aberto ? `<button onclick="removerContagem(${c.id})">Remover</button>` : ""}</td></tr>`).join("");
+    <td>${dataHoraBR(c.data_hora)}</td><td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td>
+    <td class="num">${num(c.quantidade)}</td><td class="mono">${esc(c.epc)}</td><td>${esc(c.origem)}</td><td>${esc(c.meio)}</td>
+    <td class="acoes">${aberto ? `<button class="link perigo-texto" onclick="removerContagem(${c.id}, this)">remover</button>` : ""}</td></tr>`).join("")
+    || vazio(8, "Nenhuma contagem ainda");
 }
-
-async function acharProdutoInv() {
-  const p = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent($("iCodigo").value));
-  $("iProduto").value = p.id;
-  await carregarLotesInv();
-  $("iQtd").focus();
+async function removerContagem(id, botao) {
+  await executar(botao, async () => { await api("DELETE", `/api/inventarios/${inventarioAtual}/contagens/${id}`); await carregarInventario(); });
 }
-
-async function carregarLotesInv() {
-  const p = produtos.find((x) => x.id === Number($("iProduto").value));
-  if (!p) return;
-  const d = await api("GET", "/api/produtos/busca?codigo=" + encodeURIComponent(p.sku));
-  $("iLote").innerHTML = d.lotes.map((l) => `<option value="${l.id}">${esc(l.lote)} (val. ${dataBR(l.validade)})</option>`).join("");
-}
-
-async function adicionarContagem() {
-  await api("POST", `/api/inventarios/${$("iLista").value}/contagens`, {
-    lote_id: Number($("iLote").value), quantidade: Number($("iQtd").value),
-    meio: $("iCodigo").value ? "BARRAS" : "MANUAL",
+$("iFechar").addEventListener("click", async (ev) => {
+  const botao = ev.currentTarget;
+  if (!(await confirmar("Fechar inventário", "O saldo do sistema será ajustado para o que foi contado.\nLotes NÃO contados ficarão com saldo ZERO.\n\nIsso não pode ser desfeito.", "Fechar e ajustar"))) return;
+  await executar(botao, async () => {
+    const r = await api("POST", `/api/inventarios/${inventarioAtual}/fechar`);
+    toast(`Inventário fechado: ${r.ajustes} lote(s) ajustado(s)`);
+    await carregarInventarios(); await carregarInventario();
   });
-  $("iQtd").value = ""; $("iCodigo").value = "";
-  carregarInventario();
-}
+});
+$("iCancelar").addEventListener("click", async (ev) => {
+  const botao = ev.currentTarget;
+  if (!(await confirmar("Cancelar inventário", "As contagens serão descartadas e o estoque não muda.", "Cancelar inventário"))) return;
+  await executar(botao, async () => {
+    await api("POST", `/api/inventarios/${inventarioAtual}/cancelar`);
+    toast("Inventário cancelado", "alerta");
+    await carregarInventarios(); await carregarInventario();
+  });
+});
 
-async function removerContagem(id) {
-  await api("DELETE", `/api/inventarios/${$("iLista").value}/contagens/${id}`);
-  carregarInventario();
+// ======================================================================= movimentos
+function filtrosMov() {
+  const q = new URLSearchParams();
+  [["busca", "mBusca"], ["produto_id", "mProduto"], ["tipo", "mTipo"], ["de", "mDe"], ["ate", "mAte"]].forEach(([k, id]) => { if ($(id).value) q.set(k, $(id).value); });
+  return q;
 }
-
-async function fecharInventario() {
-  if (!confirm("Fechar o inventário? O estoque do sistema será ajustado para o que foi contado.")) return;
-  const r = await api("POST", `/api/inventarios/${$("iLista").value}/fechar`);
-  mensagem(`Inventário fechado. ${r.ajustes} lote(s) ajustado(s).`);
-  carregarInventarios(); carregarInventario();
-}
-
-// ---------------------------------------------------------------- movimentos
 async function carregarMovimentos() {
-  const lista = await api("GET", "/api/movimentos");
+  const q = filtrosMov();
+  $("mCsv").href = "/api/movimentos.csv?" + q;
+  q.set("limite", 500);
+  const lista = await api("GET", "/api/movimentos?" + q);
   $("tabMovimentos").innerHTML = lista.map((m) => `<tr>
-    <td>${esc(m.data_hora)}</td><td>${esc(m.tipo)}</td><td>${esc(m.sku)}</td><td>${esc(m.lote)}</td>
-    <td class="${m.quantidade > 0 ? "pos" : "neg"}">${m.quantidade > 0 ? "+" : ""}${m.quantidade}</td>
-    <td>${esc(m.epc)}</td><td>${esc(m.origem)}</td><td>${esc(m.meio)}</td><td>${esc(m.motivo)}</td></tr>`).join("");
+    <td class="fraco" style="white-space:nowrap">${dataHoraBR(m.data_hora)}</td><td>${seloTipo(m.tipo)}</td>
+    <td>${esc(m.sku)} <span class="fraco">${esc(m.descricao)}</span></td><td>${esc(m.lote)}</td><td><span class="cod">${esc(m.endereco)}</span></td>
+    <td class="num ${qtdClasse(m.quantidade)}">${m.quantidade ? sinal(m.quantidade) : ""}</td>
+    <td class="num">${m.saldo_apos === null ? "" : num(m.saldo_apos)}</td>
+    <td>${esc(m.documento)}</td><td>${esc(m.motivo)}</td><td class="mono">${esc(m.epc)}</td>
+    <td class="fraco">${esc(m.origem)} · ${esc(m.meio)}</td></tr>`).join("") || vazio(11, "Nenhum movimento encontrado");
+  $("mRodape").textContent = lista.length >= 500 ? "Mostrando os 500 mais recentes. Use os filtros ou exporte o CSV para ver tudo." : `${lista.length} movimento(s)`;
+}
+$("formFiltroMov").addEventListener("submit", (ev) => { ev.preventDefault(); executar(ev.submitter, carregarMovimentos); });
+$("formFiltroMov").addEventListener("reset", () => setTimeout(carregarMovimentos));
+
+// ======================================================================= produtos
+function desenharProdutos() {
+  const busca = $("pBusca").value.trim().toLowerCase(), inativos = $("pMostrarInativos").checked;
+  const lista = produtos.filter((p) => (inativos || p.ativo) && (!busca || [p.sku, p.descricao, p.ean].some((t) => String(t || "").toLowerCase().includes(busca))));
+  $("tabProdutos").innerHTML = lista.map((p) => `<tr class="${p.ativo ? "" : "inativo"}">
+    <td><b>${esc(p.sku)}</b></td><td>${esc(p.descricao)}</td><td class="mono">${esc(p.ean)}</td><td>${esc(p.unidade)}</td>
+    <td class="num">${num(p.estoque_min)}</td><td class="num ${p.estoque_min > 0 && p.saldo < p.estoque_min ? "neg" : ""}">${num(p.saldo)}</td>
+    <td>${p.ativo ? '<span class="selo sucesso">Ativo</span>' : '<span class="selo">Inativo</span>'}</td>
+    <td class="acoes"><button class="pequeno" onclick="editarProduto(${p.id})">Editar</button>
+      <button class="pequeno" onclick="excluirProduto(${p.id}, this)">Excluir</button></td></tr>`).join("")
+    || vazio(8, produtos.length ? "Nenhum produto encontrado" : "Nenhum produto cadastrado");
+}
+["pBusca", "pMostrarInativos"].forEach((id) => $(id).addEventListener("input", desenharProdutos));
+function editarProduto(id) {
+  const p = produtoPorId(id);
+  $("pId").value = p.id; $("pSku").value = p.sku; $("pDesc").value = p.descricao; $("pEan").value = p.ean || "";
+  $("pUn").value = p.unidade; $("pMin").value = p.estoque_min; $("pAtivo").checked = !!p.ativo;
+  $("pTitulo").textContent = `Editando ${p.sku}`;
+  $("pCancelar").textContent = "Cancelar edição";
+  $("pSku").focus();
+}
+aoEnviar($("formProduto"), async () => {
+  const dados = { sku: $("pSku").value, descricao: $("pDesc").value, ean: $("pEan").value, unidade: $("pUn").value,
+    estoque_min: Number($("pMin").value) || 0, ativo: $("pAtivo").checked };
+  const id = $("pId").value;
+  if (id) await api("PUT", "/api/produtos/" + id, dados); else await api("POST", "/api/produtos", dados);
+  toast(`Produto ${dados.sku.toUpperCase()} ${id ? "atualizado" : "cadastrado"}`);
+  await carregarCadastros(); desenharProdutos();
+});
+$("formProduto").addEventListener("reset", () => setTimeout(() => {
+  $("pId").value = ""; $("pTitulo").textContent = "Novo produto"; $("pCancelar").textContent = "Limpar"; $("pSku").focus();
+}));
+async function excluirProduto(id, botao) {
+  const p = produtoPorId(id);
+  const texto = `Excluir ${p.sku} · ${p.descricao}?\n\nSerão apagados JUNTO: todos os lotes, etiquetas RFID, movimentos (histórico), ` +
+    `contagens de inventário e itens de pedido deste produto${p.saldo ? `, incluindo ${num(p.saldo)} ${p.unidade} em estoque` : ""}.\n\n` +
+    `Isso não pode ser desfeito. Para só parar de usar, edite e desmarque "Ativo".`;
+  if (!(await confirmar("Excluir produto", texto, "Excluir tudo"))) return;
+  await executar(botao, async () => {
+    const r = await api("DELETE", "/api/produtos/" + id);
+    toast(`Produto ${r.sku} excluído${r.lotes ? ` (com ${r.lotes} lote(s) e seu histórico)` : ""}`, "alerta");
+    if ($("pId").value === String(id)) $("formProduto").reset();
+    await carregarCadastros(); desenharProdutos();
+  });
 }
 
-// ---------------------------------------------------------------- atualização automática
-// O que o coletor faz aparece aqui sozinho (consulta o servidor a cada 3 s).
-function atualizar() {
-  if (abaAtual === "estoque") carregarEstoque();
-  if (abaAtual === "movimentos") carregarMovimentos();
-  if (abaAtual === "inventario" && $("iLista").value) carregarInventario();
+// ======================================================================= endereços
+function desenharEnderecos() {
+  $("tabEnderecos").innerHTML = enderecos.map((e) => `<tr class="${e.ativo ? "" : "inativo"}">
+    <td><b>${esc(e.codigo)}</b></td><td>${esc(e.tipo)}</td><td>${esc(e.descricao)}</td>
+    <td class="num">${num(e.lotes)}</td><td class="num">${num(e.quantidade)}</td>
+    <td>${e.ativo ? '<span class="selo sucesso">Ativo</span>' : '<span class="selo">Inativo</span>'}</td>
+    <td class="acoes"><button class="pequeno" onclick="editarEndereco(${e.id})">Editar</button>
+      <button class="pequeno" onclick="excluirEndereco(${e.id}, this)">Excluir</button></td></tr>`).join("");
+}
+function editarEndereco(id) {
+  const e = enderecos.find((x) => x.id === id);
+  $("enId").value = e.id; $("enCodigo").value = e.codigo; $("enTipo").value = e.tipo; $("enDesc").value = e.descricao || ""; $("enAtivo").checked = !!e.ativo;
+  $("enTitulo").textContent = `Editando ${e.codigo}`;
+  $("enCodigo").focus();
+}
+aoEnviar($("formEndereco"), async () => {
+  const dados = { codigo: $("enCodigo").value, tipo: $("enTipo").value, descricao: $("enDesc").value, ativo: $("enAtivo").checked };
+  const id = $("enId").value;
+  if (id) await api("PUT", "/api/enderecos/" + id, dados); else await api("POST", "/api/enderecos", dados);
+  toast(`Endereço ${dados.codigo.toUpperCase()} salvo`);
+  await carregarCadastros(); desenharEnderecos();
+});
+$("formEndereco").addEventListener("reset", () => setTimeout(() => { $("enId").value = ""; $("enTitulo").textContent = "Novo endereço"; $("enCodigo").focus(); }));
+async function excluirEndereco(id, botao) {
+  const e = enderecos.find((x) => x.id === id);
+  if (!(await confirmar("Excluir endereço", `Excluir o endereço ${e.codigo}?`, "Excluir"))) return;
+  await executar(botao, async () => {
+    await api("DELETE", "/api/enderecos/" + id);
+    toast(`Endereço ${e.codigo} excluído`, "alerta");
+    await carregarCadastros(); desenharEnderecos();
+  });
+}
+
+// ======================================================================= limpar tudo
+$("btLimparTudo").addEventListener("click", (ev) => {
+  ev.preventDefault();
+  $("formLimpar").reset();
+  $("dlgLimpar").showModal();
+});
+$("lmManter").addEventListener("change", () => {
+  $("formLimpar").querySelector("[type=submit]").textContent = $("lmManter").checked ? "Apagar movimentação" : "Apagar tudo";
+});
+$("formLimpar").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  executar(ev.submitter, async () => {
+    const manter = $("lmManter").checked;
+    await api("POST", "/api/limpar-tudo", { manter_cadastros: manter });
+    $("dlgLimpar").close();
+    // Esquece o que estava aberto nas telas e limpa todos os formulários
+    pedidoAtual = null; inventarioAtual = null; itensNovoPedido = []; estoqueLinhas = []; conferidos = new Set();
+    $("pedidoDetalhe").innerHTML = '<p class="vazio">Escolha um pedido na lista ou crie um novo.</p>';
+    $("iLista").value = "";
+    document.querySelectorAll("main form").forEach((f) => f.reset());
+    await carregarCadastros();
+    toast(manter ? "Movimentação apagada. Produtos e endereços foram mantidos." : "Tudo apagado. O sistema está zerado.", "alerta");
+    if (location.hash === "#painel") irPara("painel"); else location.hash = "painel";
+  });
+});
+
+// ======================================================================= atualização automática
+// O que o coletor faz aparece aqui sozinho (a tela consulta o servidor a cada 5 s).
+const carregadores = {
+  painel: carregarPainel, estoque: carregarEstoque, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
+  inventario: async () => { await carregarInventarios(); await carregarInventario(); }, movimentos: carregarMovimentos,
+  produtos: async () => { await carregarCadastros(); desenharProdutos(); },
+  enderecos: async () => { await carregarCadastros(); desenharEnderecos(); },
+};
+async function atualizar(forcar) {
+  if (!forcar && (document.hidden || document.querySelector("dialog[open]"))) return;
+  try { await carregadores[paginaAtual]?.(); }
+  catch (e) { if (forcar) toast(e.message, "erro"); }
+}
+async function relogio() {
+  try {
+    const s = await api("GET", "/api/status");
+    $("relogio").textContent = "Servidor " + dataHoraBR(s.data_hora).slice(0, 16);
+    if (paginaAtual !== "painel") contadoresMenu(await api("GET", "/api/resumo"));
+  } catch { /* conexao() já mostra o aviso */ }
 }
 
 async function iniciar() {
-  const s = await api("GET", "/api/status");
-  $("bMotivo").innerHTML = s.motivos.map((m) => `<option>${m}</option>`).join("");
-  await carregarProdutos();
-  await carregarInventarios();
-  atualizar();
-  setInterval(atualizar, 3000);
+  try {
+    motivos = (await api("GET", "/api/status")).motivos;
+    await carregarCadastros();
+  } catch (e) { toast(e.message, "erro"); }
+  $("eEndereco").value = enderecoDoca();
+  desenharItensPedido();
+  irPara(location.hash.slice(1) || "painel");
+  relogio();
+  setInterval(() => atualizar(false), 5000);
+  setInterval(relogio, 15000);
 }
 iniciar();
 </script>

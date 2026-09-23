@@ -24,12 +24,16 @@ só como interface de leitura; **toda regra e toda data/hora ficam no servidor**
 ## Modelo de dados
 
 ```
-produtos(id, sku, descricao, ean, unidade, estoque_min)
-lotes(id, produto_id, lote, validade, quantidade)
+produtos(id, sku, descricao, ean, unidade, estoque_min, ativo)
+enderecos(id, codigo, descricao, tipo, ativo)      -- RECEBIMENTO | ARMAZENAGEM | EXPEDICAO
+lotes(id, produto_id, lote, validade, quantidade, endereco_id, status, criado_em)  -- LIBERADO | BLOQUEADO
 tags(epc, lote_id, status)                        -- ATIVA | BAIXADA
-movimentos(id, data_hora, tipo, lote_id, quantidade, epc, origem, meio, motivo)
-inventarios(id, nome, status, aberto_em, fechado_em)
+movimentos(id, data_hora, tipo, lote_id, quantidade, epc, origem, meio, motivo, documento, endereco, saldo_apos)
+inventarios(id, nome, status, aberto_em, fechado_em)  -- ABERTO | FECHADO | CANCELADO
 contagens(id, inventario_id, lote_id, quantidade, epc, origem, meio, data_hora)
+pedidos(id, numero, cliente, observacao, status, criado_em, liberado_em, expedido_em)
+pedido_itens(id, pedido_id, produto_id, quantidade)
+reservas(id, pedido_id, item_id, lote_id, quantidade)
 ```
 
 ## Etapas
@@ -40,4 +44,5 @@ contagens(id, inventario_id, lote_id, quantidade, epc, origem, meio, data_hora)
 | 2 | Tela web do PC | feito |
 | 3 | App do coletor: menu, RFID, código de barras, 4 operações | feito (falta compilar e testar no MC33) |
 | 4 | Teste no aparelho: potência RFID, DataWedge, rede | a fazer |
+| 4b | Endereçamento, bloqueio de lote, pedidos com reserva FEFO, painel, kardex com CSV, simulador do coletor | feito |
 | 5 | Material do curso: roteiro de aulas e exercícios | opcional |

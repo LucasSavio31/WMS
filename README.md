@@ -23,7 +23,7 @@ Na página **Releases** do repositório (lado direito, "Releases" → última ve
 | Arquivo | Onde | Como usar |
 |---|---|---|
 | `WMS-Servidor.exe` | PC com Windows | Coloque numa pasta (ex.: `C:\WMS`) e dê dois cliques. Não precisa instalar nada. O navegador abre sozinho em http://localhost:8000. O banco `estoque.db` é criado na mesma pasta. |
-| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. No app, digite o endereço que aparece na janela do servidor ("Usar no coletor") e toque em *Salvar e testar conexão*. |
+| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app pergunta o endereço do servidor: digite o que aparece na janela do servidor ("Usar no coletor"). Depois configure o DataWedge (seção 2). |
 
 - Na primeira execução, o Windows pode mostrar "O Windows protegeu o computador": clique em *Mais informações* e depois em *Executar assim mesmo*.
 - Quando aparecer o aviso do Firewall, clique em **Permitir acesso**. Isso é necessário para o coletor alcançar o PC.
@@ -35,6 +35,45 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 
 | Função | PC (navegador) | Coletor |
 |---|---|---|
+| Painel com indicadores (validade, mínimo, doca, pedidos, entradas/saídas do dia) | ✔ | — |
+| Cadastro de produtos (SKU, EAN, unidade, mínimo, ativo/inativo) | ✔ | — |
+| Cadastro de endereços (doca de recebimento, A-01-01, expedição) | ✔ | — |
+| Posição de estoque por produto, lote e endereço, com filtros e exportação CSV | ✔ | Consulta |
+| Recebimento (entrada) com nota fiscal; lote novo vai para a doca | Quantidade digitada | RFID (cada tag = 1 unidade) ou código de barras + quantidade |
+| Armazenagem / transferência de lote entre endereços | ✔ | — |
+| Bloqueio de lote (quarentena) e liberação | ✔ | — |
+| Baixa: FEFO automático, lote escolhido (descarte) ou por EPC | ✔ | RFID ou código de barras + quantidade (FEFO) |
+| Pedidos / expedição: reserva FEFO, lista de separação por endereço, conferência e baixa | ✔ | — |
+| Inventário (contagem × sistema, acuracidade, fechar ou cancelar) | ✔ | Contar por RFID ou por código de barras |
+| Movimentos (kardex) com saldo após cada movimento, filtros e CSV | ✔ | — |
+
+**FEFO** (*First Expired, First Out*): na baixa por quantidade e nos pedidos, o servidor tira primeiro do lote
+que vence antes. Ficam de fora: lotes **vencidos** (a não ser que o motivo da baixa seja `VENCIMENTO`),
+lotes **bloqueados**, unidades **com etiqueta RFID** (só saem lendo a tag) e o que já está **reservado** para pedidos.
+Na baixa por RFID, a tag já indica o lote. Se existir outro lote que vence antes, o servidor devolve um aviso.
+
+**Fluxo de saída para cliente**: criar o pedido → *Liberar para separação* (o sistema reserva os lotes por FEFO e
+monta a lista de separação em ordem de endereço) → separar e conferir cada linha → *Confirmar expedição* (baixa com
+motivo VENDA e o número do pedido como documento). Cancelar devolve a reserva.
+
+**Endereçamento**: cada lote fica em um endereço. O lote novo entra na `DOCA-REC` e depois é *armazenado*
+(transferido) para um endereço de estoque. A transferência fica registrada nos movimentos.
+
+**Inventário**: cada contagem (do PC ou do coletor) é gravada. A tela mostra, lote a lote,
+*Sistema × Contado × Diferença*. Ao **fechar**, o saldo do sistema passa a ser o contado
+(lote não contado fica com zero), e cada ajuste fica registrado nos movimentos.
+
+**Excluir produto** apaga também os lotes, as tags, os movimentos, as contagens e os itens de pedido dele.
+Para só parar de usar, desmarque *Ativo*.
+
+**Limpar tudo** (menu lateral, grupo *Sistema*): zera o banco para recomeçar uma aula. Opcionalmente mantém
+o cadastro de produtos e endereços e apaga só a movimentação.
+
+**Simulador do coletor**: http://localhost:8000/coletor mostra o app do coletor no navegador (as mesmas telas /m).
+O gatilho é simulado por um botão (ou a tecla F8), com etiquetas RFID e códigos de barras "na frente do leitor"
+num painel ao lado.
+
+---|---|---|
 | Cadastro de produtos (SKU, descrição, EAN, mínimo) | ✔ | — |
 | Posição de estoque por produto e lote, com validade | ✔ | Consulta |
 | Entrada | Quantidade digitada | RFID (cada tag = 1 unidade) ou código de barras + quantidade |
@@ -74,15 +113,72 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 
 | Arquivo | O que tem |
 |---|---|
-| `server/app/db.py` | Tabelas do banco (produtos, lotes, tags, movimentos, inventários, contagens) |
-| `server/app/estoque.py` | **Regras**: entrada, baixa FEFO, baixa por tag, inventário |
+| `server/app/db.py` | Tabelas do banco e migração automática de bancos antigos |
+| `server/app/estoque.py` | **Regras**: entrada, baixa FEFO, baixa por tag, endereços, bloqueio, pedidos, inventário |
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
+| `server/app/static/m.html` | Telas do coletor (abre em `/m`; dentro do app ou no Chrome) |
+| `server/app/static/coletor.html` | Simulador do app do coletor no PC (abre em `/coletor`) |
 | `server/wms_servidor.py` | Inicia o servidor e abre o navegador (vira o `WMS-Servidor.exe`) |
 
 ---
 
-## 2. App do coletor (Android / Kotlin)
+## 2. App do coletor (recomendado)
+
+O app **Coletor WMS** (`ColetorWMS.apk`) é uma "casca": ele mostra as telas do servidor (**/m**) e cuida do que
+o navegador não faz sozinho:
+
+- **RFID**: o app lê as etiquetas pelo SDK da Zebra (o mesmo do 123RFID) e entrega cada EPC para a tela.
+- **Código de barras**: vem pelo **DataWedge**, que "digita" o código na tela.
+- **Gatilho**: é um só para RFID e código de barras. A chave **📡 RFID / ▮▮ Código**, ao lado do campo
+  *Leitura*, mostra o que ele lê. Cada tela escolhe sozinha o modo mais provável (ex.: no Recebimento começa
+  em código para bipar o produto e passa para RFID depois), e um toque na chave troca.
+- **Potência da antena**: 30% na Baixa (lê só o que está bem perto) e 100% nas outras telas.
+- Sem barra do Chrome; hora, Wi-Fi e bateria ficam na barra do próprio Android.
+- Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
+
+Telas: Recebimento (RFID ou quantidade), Armazenar (tag/produto e depois a etiqueta do endereço), Baixa
+(RFID ou FEFO por quantidade), Separação de pedidos (confere bipando o produto), Inventário e Consulta
+(tag, produto ou endereço). O botão ⚙ troca o endereço do servidor. Como as telas vêm do servidor,
+qualquer melhoria chega ao coletor sem reinstalar o app.
+
+**Como a tela entende cada leitura:** EPC (hexadecimal com 16+ caracteres) = RFID; código igual a um endereço
+cadastrado = endereço; o resto = produto (EAN ou SKU). Por isso vale imprimir etiquetas com o código dos endereços.
+
+### Configurar o DataWedge (uma vez, no coletor)
+
+O DataWedge fica só com o **código de barras**; o RFID é do app. Os nomes podem variar com a versão.
+
+1. **DataWedge** → menu ⋮ → **New profile** → nome `WMS` (se já criou para o Chrome, use o mesmo).
+2. **Associated apps** → ⋮ → **New app/activity** → **br.curso.wms** (Coletor WMS) → `*`.
+   Se o perfil estava associado ao `com.android.chrome`, pode remover essa associação.
+3. **Barcode input**: **ativado**.
+4. **RFID input**: **desativado** (se ficar ligado, o DataWedge disputa o leitor com o app).
+5. **Keystroke output**: ativado → *Basic data formatting*: **Send data** e **Send ENTER key** ativados.
+   Intent output: desativado.
+6. Se aparecerem caracteres faltando, aumente o *inter character delay* do Keystroke output.
+
+### Testar sem o coletor
+
+- **http://localhost:8000/coletor**: simulador do app. A tela /m roda dentro do desenho do aparelho, e um
+  painel ao lado faz o papel do gatilho (etiquetas RFID "ao alcance da antena" e códigos de barras).
+- **http://localhost:8000/m** no navegador: digite o código ou o EPC no campo *Leitura* e tecle Enter.
+
+## 3. Alternativa: só o Chrome, sem app
+
+A tela **/m** também funciona direto no Chrome do coletor, com o DataWedge "digitando" as leituras. Em alguns
+aparelhos/versões o **RFID input** do DataWedge não funciona (o gatilho só lê código de barras). Nesse caso use o app.
+
+- No perfil `WMS` do DataWedge, associe `com.android.chrome` e ative **Barcode input** e **RFID input**
+  (*Hardware trigger* e *Filter duplicate tags* ligados), além do Keystroke output com ENTER.
+- **Tela cheia**: no primeiro toque a página esconde a barra de endereços (dá para desligar no ⚙). Se o Chrome
+  sair da tela cheia, aparece o botão ⛶ e o próximo toque volta.
+- **Teclado virtual**: fica escondido enquanto se lê com o gatilho; abre nos campos de digitação e no ⌨.
+- **Barra de status** (em tela cheia): hora do servidor, Wi-Fi (qualidade da conexão com o servidor, pelo
+  tempo de resposta) e bateria.
+- **Abrir sem a barra do Chrome e com bateria**: no Chrome do coletor, `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
+  → coloque `http://IP-DO-PC:8000` → ative → **Relaunch**. Depois abra `/m` → ⋮ → **Instalar app**.
+  (Necessário porque o servidor usa `http://` na rede local, sem certificado.)
 
 ### Dá para usar o VS Code?
 
@@ -118,21 +214,24 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 | Arquivo | O que tem |
 |---|---|
-| `MainActivity.kt` | Menu, endereço do servidor e teste de conexão |
-| `OperacaoActivity.kt` | Tela única de Entrada, Baixa, Inventário e Consulta |
+| `MainActivity.kt` | WebView com a tela /m, ponte JavaScript (`ColetorApp`), endereço do servidor |
 | `Rfid.kt` | Leitor RFID Zebra (API3): conectar, gatilho, potência, tags lidas |
-| `Servidor.kt` | Chamadas HTTP/JSON para o servidor |
+| `Servidor.kt` | Endereço do servidor |
 
-### Código de barras
+### Ponte entre o app e a tela
 
-O app usa o **DataWedge** com o perfil padrão: o leitor "digita" o código no campo e aperta ENTER.
-O gatilho do MC33 é compartilhado. Na tela, a opção **RFID / Código de barras** muda o que o gatilho faz
-(`setTriggerMode`).
+| Quem chama | O quê | Para quê |
+|---|---|---|
+| App → tela | `leituraRfid(epc)` | cada etiqueta lida pelo RFID |
+| App → tela | `statusRfid(mensagem)` | leitor RFID conectou (ou não) |
+| Tela → app | `ColetorApp.gatilhoRfid(true/false)` | gatilho lê RFID ou código de barras (`setTriggerMode`) |
+| Tela → app | `ColetorApp.potencia(%)` | potência da antena |
+| Tela → app | `ColetorApp.servidor()` | abre o popup do endereço do servidor |
 
 ---
 
 ## Simplificações (de propósito, por ser didático)
 
 - Sem login nem senha, e sem HTTPS: é para uso em rede local.
-- Sem endereçamento (rua, prateleira): o estoque é controlado por produto e lote.
+- Endereçamento por lote: o lote inteiro fica em um endereço (a transferência move o lote todo).
 - Se a rede cair, o coletor mostra o erro e o operador envia de novo. Não existe fila offline.

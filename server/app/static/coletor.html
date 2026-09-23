@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador do Coletor</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='7' y='2' width='18' height='28' rx='3' fill='%23333'/><rect x='9' y='5' width='14' height='14' fill='%2380cbc4'/></svg>">
+<!--
+  Simulador do app "Coletor WMS" (Zebra MC3390R / MC3330R) no navegador.
+
+  O app de verdade é uma "casca": mostra a página /m do servidor e lê o RFID
+  pelo SDK da Zebra, entregando cada EPC para a página (leituraRfid). Aqui:
+    - a página /m roda num iframe dentro do desenho do aparelho;
+    - ColetorAppSimulado faz o papel do objeto ColetorApp do app Android;
+    - o botão amarelo (ou F8) faz o papel do gatilho: em modo RFID entrega as
+      etiquetas marcadas; em modo código de barras "digita" o código escolhido,
+      como o DataWedge.
+-->
+<style>
+  :root { --pagina: #e9edf2; --texto: #1c2430; --texto-2: #5c6778; --painel: #fff; --borda: #d9dfe7; }
+  @media (prefers-color-scheme: dark) { :root { --pagina: #0f1520; --texto: #e4eaf2; --texto-2: #9aa8ba; --painel: #172130; --borda: #2a3748; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--pagina); color: var(--texto); font: 14px/1.45 "Segoe UI", system-ui, Roboto, Arial, sans-serif; }
+  .topo { display: flex; align-items: center; gap: 12px; padding: 12px 20px; }
+  .topo h1 { font-size: 18px; margin: 0; }
+  .topo a { margin-left: auto; color: inherit; font-size: 13px; }
+  .palco { display: flex; gap: 28px; justify-content: center; align-items: flex-start; padding: 8px 16px 40px; flex-wrap: wrap; }
+
+  /* ---------------- aparelho ---------------- */
+  .aparelho { position: relative; background: linear-gradient(160deg, #3b3f45, #1f2226 55%, #2a2d31); border-radius: 34px 34px 44px 44px; padding: 26px 18px 18px; box-shadow: 0 18px 40px rgba(0,0,0,.35), inset 0 1px 0 #ffffff22; width: 396px; flex: none; }
+  .aparelho::before { content: "ZEBRA"; position: absolute; top: 7px; left: 0; right: 0; text-align: center; color: #9aa0a8; font: 700 10px/1 Arial; letter-spacing: .35em; }
+  .gatilho-lateral { position: absolute; left: -9px; top: 190px; width: 10px; height: 90px; border-radius: 6px 0 0 6px; background: #f2b705; }
+  .gatilho-lateral.direito { left: auto; right: -9px; border-radius: 0 6px 6px 0; }
+  .tela { width: 360px; height: 640px; background: #fafafa; border-radius: 4px; overflow: hidden; display: flex; flex-direction: column; }
+  .status-bar { height: 24px; background: #000; color: #fff; font: 12px Roboto, Arial, sans-serif; display: flex; align-items: center; padding: 0 8px; gap: 6px; flex: none; }
+  .status-bar .dir { margin-left: auto; }
+  iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+  .nav-bar { height: 40px; background: #000; display: flex; justify-content: space-around; align-items: center; flex: none; }
+  .nav-bar button { background: none; border: none; color: #fff; font-size: 18px; width: 64px; height: 100%; cursor: pointer; }
+  .nav-bar button:active { background: #ffffff22; }
+  .teclado { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-top: 14px; }
+  .teclado span { background: #2c3035; color: #cfd4da; border-radius: 7px; text-align: center; font: 600 12px/24px Arial; box-shadow: inset 0 -2px 0 #0006; user-select: none; }
+  .teclado span.amarela { background: #f2b705; color: #222; }
+  .led { position: absolute; top: 9px; right: 30px; width: 7px; height: 7px; border-radius: 50%; background: #444; }
+  .led.lendo { background: #ff3b30; box-shadow: 0 0 8px #ff3b30; }
+  .led.ok { background: #34c759; box-shadow: 0 0 8px #34c759; }
+
+  /* ---------------- painel de simulação ---------------- */
+  .simulacao { width: 440px; max-width: 100%; display: flex; flex-direction: column; gap: 14px; }
+  .caixa { background: var(--painel); border: 1px solid var(--borda); border-radius: 10px; padding: 14px 16px; }
+  .caixa h2 { font-size: 14px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+  .caixa p { margin: 0 0 10px; color: var(--texto-2); font-size: 12.5px; }
+  .estado { margin-left: auto; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 10px; background: #e3f2fd; color: #1f6feb; }
+  .estado.barras { background: #fff4e0; color: #b26a00; }
+  .botao-gatilho { width: 100%; padding: 18px; font: 700 16px system-ui, Arial; border: none; border-radius: 12px; background: #f2b705; color: #222; cursor: pointer; box-shadow: 0 4px 0 #b58800; user-select: none; touch-action: none; }
+  .botao-gatilho.apertado { transform: translateY(3px); box-shadow: 0 1px 0 #b58800; background: #ffcc33; }
+  .mini { font: 600 12px system-ui, Arial; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--borda); background: var(--painel); color: var(--texto); cursor: pointer; }
+  .barra { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .barra input[type=number] { width: 60px; padding: 4px 6px; border: 1px solid var(--borda); border-radius: 6px; background: var(--painel); color: var(--texto); }
+  .itens { max-height: 220px; overflow-y: auto; border: 1px solid var(--borda); border-radius: 8px; }
+  .itens label { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--borda); cursor: pointer; font-size: 12.5px; }
+  .itens label:last-child { border-bottom: none; }
+  .itens .mono { font-family: Consolas, monospace; font-size: 12px; }
+  .itens .fraco { color: var(--texto-2); margin-left: auto; text-align: right; }
+  .vazio { color: var(--texto-2); padding: 12px; text-align: center; font-size: 12.5px; }
+  kbd { font: 600 11px Consolas, monospace; border: 1px solid var(--borda); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+</style>
+</head>
+<body>
+<div class="topo">
+  <h1>Simulador do app Coletor WMS (Zebra MC33xxR)</h1>
+  <a href="/" target="_blank">Abrir o sistema (PC) ↗</a>
+</div>
+
+<div class="palco">
+  <div class="aparelho">
+    <span class="gatilho-lateral"></span><span class="gatilho-lateral direito"></span>
+    <span class="led" id="led"></span>
+    <div class="tela">
+      <div class="status-bar"><span id="hora">--:--</span><span class="dir">📶 🔋 100%</span></div>
+      <iframe id="app" src="/m" title="Tela do app"></iframe>
+      <div class="nav-bar"><button id="navVoltar" title="Voltar">◁</button><button id="navInicio" title="Início">○</button><button title="Recentes">□</button></div>
+    </div>
+    <div class="teclado">
+      <span>F1</span><span>F2</span><span>F3</span><span>F4</span>
+      <span>1</span><span>2</span><span>3</span><span class="amarela">SCAN</span>
+      <span>4</span><span>5</span><span>6</span><span>⌫</span>
+      <span>7</span><span>8</span><span>9</span><span>ENT</span>
+    </div>
+  </div>
+
+  <div class="simulacao">
+    <div class="caixa">
+      <h2>Gatilho <span class="estado" id="estado">RFID · 100%</span></h2>
+      <p>Segure o botão (ou a tecla <kbd>F8</kbd>). O que ele lê segue a chave <b>📡 RFID / ▮▮ Código</b> da tela, como no app: cada tela escolhe o modo mais provável.</p>
+      <button class="botao-gatilho" id="gatilho">▶ SEGURAR PARA LER</button>
+    </div>
+
+    <div class="caixa">
+      <h2>Etiquetas RFID ao alcance da antena</h2>
+      <p>As marcadas são "vistas" pelo leitor quando o gatilho é apertado em modo RFID.</p>
+      <div class="barra">
+        <button class="mini" id="btGerar">+ Gerar</button><input type="number" id="qtdGerar" value="5" min="1" max="50"><span style="font-size:12px">etiqueta(s) nova(s)</span>
+        <button class="mini" id="btAtualizarTags" style="margin-left:auto">↻ Tags do estoque</button>
+      </div>
+      <div class="barra">
+        <button class="mini" id="btTodas">Marcar todas</button><button class="mini" id="btNenhuma">Desmarcar</button>
+        <button class="mini" id="btLimparGeradas">Remover geradas</button>
+      </div>
+      <div class="itens" id="listaTags"></div>
+    </div>
+
+    <div class="caixa">
+      <h2>Código de barras na frente do leitor</h2>
+      <p>Em modo código de barras, o gatilho lê o código escolhido (o DataWedge "digita" + ENTER). Inclui as etiquetas de endereço.</p>
+      <div class="itens" id="listaCodigos"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tela = () => $("app").contentWindow;
+
+// ================================================================ o "app" (papel do ColetorApp do Android)
+const estado = { rfid: true, potencia: 100 };
+window.ColetorAppSimulado = {
+  gatilhoRfid(rfid) { estado.rfid = !!rfid; mostrarEstado(); },
+  potencia(pct) { estado.potencia = pct; mostrarEstado(); },
+  rfidConectado() { return true; },
+  servidor() {},
+};
+function mostrarEstado() {
+  $("estado").textContent = estado.rfid ? `RFID · ${estado.potencia}%` : "Código de barras";
+  $("estado").className = "estado" + (estado.rfid ? "" : " barras");
+  $("gatilho").textContent = estado.rfid ? `▶ SEGURAR PARA LER RFID (${estado.potencia}%)` : "▶ APERTAR PARA LER CÓDIGO DE BARRAS";
+}
+$("navVoltar").addEventListener("click", () => tela().history.back());
+$("navInicio").addEventListener("click", () => (tela().location.hash = "menu"));
+$("app").addEventListener("load", () => setTimeout(() => tela().statusRfid?.("RFID conectado (simulado)"), 300));
+
+// ================================================================ etiquetas e códigos
+let tagsAmbiente = [];          // {epc, info, marcada, gerada}
+let codigoEscolhido = null;
+
+async function get(url) { const r = await fetch(url); if (!r.ok) throw new Error((await r.json()).detail); return r.json(); }
+
+async function carregarTagsEstoque() {
+  try {
+    const lista = await get("/api/tags?status=ATIVA");
+    const geradas = tagsAmbiente.filter((t) => t.gerada);
+    const marcadas = new Set(tagsAmbiente.filter((t) => t.marcada).map((t) => t.epc));
+    tagsAmbiente = [...geradas, ...lista.filter((t) => !geradas.some((g) => g.epc === t.epc))
+      .map((t) => ({ epc: t.epc, info: `${t.sku} · lote ${t.lote}`, marcada: marcadas.has(t.epc), gerada: false }))];
+    desenharTags();
+  } catch {}
+}
+function gerarTags() {
+  const n = Math.min(Math.max(parseInt($("qtdGerar").value) || 1, 1), 50);
+  for (let i = 0; i < n; i++) {
+    const epc = "E280" + Array.from({ length: 20 }, () => "0123456789ABCDEF"[Math.floor(Math.random() * 16)]).join("");
+    tagsAmbiente.unshift({ epc, info: "etiqueta nova (não cadastrada)", marcada: true, gerada: true });
+  }
+  desenharTags();
+}
+function desenharTags() {
+  $("listaTags").innerHTML = tagsAmbiente.map((t, i) => `<label>
+      <input type="checkbox" data-i="${i}" ${t.marcada ? "checked" : ""}>
+      <span class="mono">${esc(t.epc)}</span><span class="fraco">${esc(t.info)}</span></label>`).join("")
+    || '<div class="vazio">Nenhuma etiqueta. Gere etiquetas novas para fazer um Recebimento por RFID.</div>';
+}
+$("listaTags").addEventListener("change", (ev) => { const i = ev.target.dataset.i; if (i !== undefined) tagsAmbiente[i].marcada = ev.target.checked; });
+$("btGerar").addEventListener("click", gerarTags);
+$("btAtualizarTags").addEventListener("click", carregarTagsEstoque);
+$("btTodas").addEventListener("click", () => { tagsAmbiente.forEach((t) => (t.marcada = true)); desenharTags(); });
+$("btNenhuma").addEventListener("click", () => { tagsAmbiente.forEach((t) => (t.marcada = false)); desenharTags(); });
+$("btLimparGeradas").addEventListener("click", () => { tagsAmbiente = tagsAmbiente.filter((t) => !t.gerada); desenharTags(); });
+
+async function carregarCodigos() {
+  try {
+    const [produtos, enderecos] = await Promise.all([get("/api/produtos"), get("/api/enderecos")]);
+    const codigos = [...produtos.map((p) => ({ codigo: p.ean || p.sku, info: `${p.sku} · ${p.descricao}` })),
+      ...enderecos.filter((e) => e.ativo).map((e) => ({ codigo: e.codigo, info: "etiqueta de endereço" }))];
+    if (!codigoEscolhido && codigos.length) codigoEscolhido = codigos[0].codigo;
+    $("listaCodigos").innerHTML = codigos.map((c) => `<label><input type="radio" name="codigo" value="${esc(c.codigo)}" ${c.codigo === codigoEscolhido ? "checked" : ""}>
+        <span class="mono">${esc(c.codigo)}</span><span class="fraco">${esc(c.info)}</span></label>`).join("")
+      || '<div class="vazio">Cadastre produtos no sistema (PC).</div>';
+  } catch {}
+}
+$("listaCodigos").addEventListener("change", (ev) => { if (ev.target.name === "codigo") codigoEscolhido = ev.target.value; });
+
+// ================================================================ gatilho
+let lendo = null;
+function apertarGatilho() {
+  if (lendo) return;
+  $("gatilho").classList.add("apertado");
+  if (estado.rfid) {
+    $("led").className = "led lendo";
+    // Inventory.perform(): vai "vendo" as etiquetas ao alcance, uma a cada ~120 ms
+    const fila = tagsAmbiente.filter((t) => t.marcada);
+    lendo = setInterval(() => { const t = fila.shift(); if (t) tela().leituraRfid?.(t.epc); }, 120);
+  } else {
+    lendo = "barras";
+    if (!codigoEscolhido) return;
+    $("led").className = "led ok";
+    // DataWedge: "digita" o código no campo em foco + ENTER
+    const janela = tela(), doc = janela.document;
+    const campo = doc.activeElement && doc.activeElement.tagName !== "BODY" ? doc.activeElement : doc.getElementById("leitura");
+    campo.focus();
+    if (campo.tagName === "INPUT" || campo.tagName === "TEXTAREA") {
+      campo.value += codigoEscolhido;
+      campo.dispatchEvent(new janela.InputEvent("input", { bubbles: true, inputType: "insertText", data: codigoEscolhido }));
+    }
+    campo.dispatchEvent(new janela.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  }
+}
+function soltarGatilho() {
+  if (!lendo) return;
+  if (typeof lendo === "number") clearInterval(lendo);   // Inventory.stop()
+  lendo = null;
+  $("gatilho").classList.remove("apertado");
+  setTimeout(() => { if (!lendo) $("led").className = "led"; }, 200);
+  setTimeout(carregarTagsEstoque, 800);
+}
+const g = $("gatilho");
+g.addEventListener("pointerdown", (ev) => { ev.preventDefault(); g.setPointerCapture(ev.pointerId); apertarGatilho(); });
+g.addEventListener("pointerup", soltarGatilho);
+g.addEventListener("pointercancel", soltarGatilho);
+document.addEventListener("keydown", (ev) => { if (ev.key === "F8") { ev.preventDefault(); if (!ev.repeat) apertarGatilho(); } });
+document.addEventListener("keyup", (ev) => { if (ev.key === "F8") soltarGatilho(); });
+$("app").addEventListener("load", () => {
+  // F8 também funciona com o foco dentro da tela do aparelho
+  tela().document.addEventListener("keydown", (ev) => { if (ev.key === "F8") { ev.preventDefault(); if (!ev.repeat) apertarGatilho(); } });
+  tela().document.addEventListener("keyup", (ev) => { if (ev.key === "F8") soltarGatilho(); });
+});
+
+function relogio() { $("hora").textContent = new Date().toTimeString().slice(0, 5); }
+relogio(); setInterval(relogio, 10000);
+mostrarEstado();
+carregarTagsEstoque();
+carregarCodigos();
+setInterval(() => { if (!document.hidden) carregarCodigos(); }, 15000);
+</script>
+</body>
+</html>

@@ -86,3 +86,180 @@ def test_baixa_por_quantidade_nao_usa_unidades_com_tag(api):
     assert [l["lote"] for l in r.json()["lotes"]] == ["CB"]       # pula o lote etiquetado
     r = api.post("/api/baixas", json={"epcs": ["T1"]})
     assert r.json()["tags"][0]["ok"]                              # a tag continua podendo sair
+
+
+def lote_id(api, lote):
+    return next(l["lote_id"] for l in api.get("/api/estoque").json() if l["lote"] == lote)
+
+
+def test_pedido_reserva_fefo_e_expede(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "validade": "2030-01-01", "quantidade": 4})
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L2", "validade": "2031-01-01", "quantidade": 10})
+
+    r = api.post("/api/pedidos", json={"cliente": "Mercado X", "itens": [
+        {"codigo": "7890000000001", "quantidade": 3}, {"produto_id": pid, "quantidade": 3}]})
+    assert r.status_code == 200, r.text
+    ped = r.json()["id"]
+    assert r.json()["numero"] == f"PED-{ped:05d}"
+    assert api.post(f"/api/pedidos/{ped}/liberar").json()["status"] == "SEPARANDO"
+
+    sep = api.get(f"/api/pedidos/{ped}").json()["separacao"]
+    assert [(s["lote"], s["quantidade"]) for s in sep] == [("L1", 4), ("L2", 2)]
+    # O reservado não pode sair em outra baixa
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 9}).status_code == 400
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 8}).status_code == 200
+
+    assert api.post(f"/api/pedidos/{ped}/expedir").json()["status"] == "EXPEDIDO"
+    assert saldo(api, "L1") == 0 and saldo(api, "L2") == 0
+    movs = api.get("/api/movimentos", params={"busca": f"PED-{ped:05d}"}).json()
+    assert len(movs) == 2 and all(m["motivo"] == "VENDA" for m in movs)
+    assert api.post(f"/api/pedidos/{ped}/cancelar").status_code == 400
+
+
+def test_cancelar_pedido_devolve_reserva(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "quantidade": 5})
+    ped = api.post("/api/pedidos", json={"cliente": "C", "itens": [{"produto_id": pid, "quantidade": 5}]}).json()["id"]
+    api.post(f"/api/pedidos/{ped}/liberar")
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 1}).status_code == 400
+    api.post(f"/api/pedidos/{ped}/cancelar")
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 5}).status_code == 200
+
+
+def test_lote_bloqueado_fica_fora_do_fefo(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "Q", "validade": "2030-01-01", "quantidade": 5})
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "OK", "validade": "2031-01-01", "quantidade": 5})
+    q = lote_id(api, "Q")
+    assert api.post(f"/api/lotes/{q}/bloquear", json={"motivo": ""}).status_code == 400   # motivo obrigatório
+    assert api.post(f"/api/lotes/{q}/bloquear", json={"motivo": "Embalagem molhada"}).status_code == 200
+
+    r = api.post("/api/baixas", json={"produto_id": pid, "quantidade": 2})
+    assert [l["lote"] for l in r.json()["lotes"]] == ["OK"]
+    # Lote bloqueado só sai por descarte
+    assert api.post("/api/baixas", json={"lote_id": q, "quantidade": 1, "motivo": "CONSUMO"}).status_code == 400
+    assert api.post("/api/baixas", json={"lote_id": q, "quantidade": 1, "motivo": "AVARIA"}).status_code == 200
+    api.post(f"/api/lotes/{q}/liberar")
+    r = api.post("/api/baixas", json={"produto_id": pid, "quantidade": 1})
+    assert [l["lote"] for l in r.json()["lotes"]] == ["Q"]
+
+
+def test_entrada_na_doca_e_transferencia(api):
+    pid = produto(api)
+    r = api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "validade": "31/12/2030",
+                                        "quantidade": 6, "documento": "NF 123"})
+    assert r.json()["endereco"] == "DOCA-REC"
+    end = api.post("/api/enderecos", json={"codigo": "a-01-01"}).json()["id"]
+    assert api.post("/api/enderecos", json={"codigo": "A-01-01"}).status_code == 400   # duplicado
+
+    l1 = lote_id(api, "L1")
+    assert api.post(f"/api/lotes/{l1}/transferir", json={"endereco": "A-01-01"}).json()["para"] == "A-01-01"
+    linha = next(l for l in api.get("/api/estoque").json() if l["lote"] == "L1")
+    assert linha["endereco"] == "A-01-01" and linha["validade"] == "2030-12-31"
+    assert api.post(f"/api/lotes/{l1}/transferir", json={"endereco_id": end}).status_code == 400
+    # Endereço com estoque não pode ser inativado
+    assert api.put(f"/api/enderecos/{end}", json={"codigo": "A-01-01", "ativo": False}).status_code == 400
+    tipos = [m["tipo"] for m in api.get("/api/movimentos").json()]
+    assert tipos == ["TRANSFERENCIA", "ENTRADA"]
+
+
+def test_validacoes_de_cadastro_e_quantidade(api):
+    pid = produto(api)
+    assert api.post("/api/produtos", json={"sku": "OUTRO", "descricao": "x", "ean": "7890000000001"}).status_code == 400
+    r = api.post("/api/produtos", json={"sku": "", "descricao": "x"})
+    assert r.status_code == 400 and "sku" in r.json()["detail"]
+    r = api.post("/api/entradas", json={"produto_id": pid, "lote": "L", "quantidade": 1.5})
+    assert r.status_code == 400 and "inteira" in r.json()["detail"]
+    assert api.post("/api/entradas", json={"produto_id": pid, "lote": "L", "validade": "32/13/2030",
+                                           "quantidade": 1}).status_code == 400
+    # Produto inativo não recebe entrada
+    api.put(f"/api/produtos/{pid}", json={"sku": "LEITE", "descricao": "Leite 1L", "ativo": False})
+    assert api.post("/api/entradas", json={"produto_id": pid, "quantidade": 1}).status_code == 400
+
+
+def test_resumo_e_csv(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "V", "validade": "2020-01-01", "quantidade": 2})
+    r = api.get("/api/resumo").json()
+    assert r["vencidos"] == 1 and r["entradas_hoje"] == 2 and r["na_doca"] == 1
+    csv = api.get("/api/estoque.csv")
+    assert csv.status_code == 200 and "LEITE;Leite 1L" in csv.text
+
+
+def test_migra_banco_da_versao_anterior(tmp_path, monkeypatch):
+    import sqlite3
+    from app import db
+    caminho = tmp_path / "antigo.db"
+    antigo = sqlite3.connect(caminho)
+    antigo.executescript("""
+        CREATE TABLE produtos (id INTEGER PRIMARY KEY, sku TEXT UNIQUE, descricao TEXT, ean TEXT,
+                               unidade TEXT DEFAULT 'UN', estoque_min REAL DEFAULT 0);
+        CREATE TABLE lotes (id INTEGER PRIMARY KEY, produto_id INTEGER, lote TEXT, validade TEXT,
+                            quantidade REAL DEFAULT 0, UNIQUE (produto_id, lote));
+        CREATE TABLE movimentos (id INTEGER PRIMARY KEY, data_hora TEXT, tipo TEXT, lote_id INTEGER,
+                                 quantidade REAL, epc TEXT, origem TEXT, meio TEXT, motivo TEXT);
+        INSERT INTO produtos (sku, descricao) VALUES ('A', 'Antigo');
+        INSERT INTO lotes (produto_id, lote, quantidade) VALUES (1, 'L', 3);""")
+    antigo.commit(); antigo.close()
+    monkeypatch.setattr(db, "DB_PATH", str(caminho))
+    from fastapi.testclient import TestClient
+    from app.main import app
+    with TestClient(app) as c:
+        linha = next(l for l in c.get("/api/estoque").json() if l["lote"] == "L")
+        assert linha["endereco"] == "DOCA-REC" and linha["status"] == "LIBERADO"
+        assert c.post("/api/baixas", json={"produto_id": 1, "quantidade": 1}).status_code == 200
+
+
+def test_excluir_produto_com_movimentacao(api):
+    pid = produto(api)
+    outro = produto(api, sku="CAFE", ean="7890000000002")
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "epcs": ["X1"], "quantidade": 0})
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L2", "quantidade": 5})
+    api.post("/api/entradas", json={"produto_id": outro, "lote": "C1", "quantidade": 5})
+    inv = api.post("/api/inventarios", json={"nome": "I"}).json()["id"]
+    api.post(f"/api/inventarios/{inv}/contagens", json={"epcs": ["X1"]})
+    so_ele = api.post("/api/pedidos", json={"cliente": "A", "itens": [{"produto_id": pid, "quantidade": 2}]}).json()["id"]
+    misto = api.post("/api/pedidos", json={"cliente": "B", "itens": [
+        {"produto_id": pid, "quantidade": 1}, {"produto_id": outro, "quantidade": 1}]}).json()["id"]
+    api.post(f"/api/pedidos/{so_ele}/liberar")
+
+    r = api.delete(f"/api/produtos/{pid}")
+    assert r.status_code == 200 and r.json()["lotes"] == 2
+    assert all(p["id"] != pid for p in api.get("/api/produtos").json())
+    assert all(m["sku"] == "CAFE" for m in api.get("/api/movimentos").json())
+    assert api.get(f"/api/pedidos/{so_ele}").status_code == 400          # pedido vazio sumiu
+    assert len(api.get(f"/api/pedidos/{misto}").json()["itens"]) == 1
+    assert api.get("/api/tags/X1").status_code == 400
+
+
+def test_lista_tags_e_paginas(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "epcs": ["T1", "T2"]})
+    api.post("/api/baixas", json={"epcs": ["T1"]})
+    assert [t["epc"] for t in api.get("/api/tags", params={"status": "ATIVA"}).json()] == ["T2"]
+    assert len(api.get("/api/tags").json()) == 2
+    assert "DataWedge" in api.get("/m").text
+    assert "Simulador" in api.get("/coletor").text and "Mini WMS" in api.get("/").text
+
+
+def test_limpar_tudo(api):
+    pid = produto(api)
+    api.post("/api/enderecos", json={"codigo": "A-01-01"})
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "epcs": ["T1"]})
+    api.post("/api/pedidos", json={"cliente": "C", "itens": [{"produto_id": pid, "quantidade": 1}]})
+    api.post("/api/inventarios", json={"nome": "I"})
+
+    # Mantendo cadastros: some só a movimentação
+    assert api.post("/api/limpar-tudo", json={"manter_cadastros": True}).status_code == 200
+    assert len(api.get("/api/produtos").json()) == 1 and len(api.get("/api/enderecos").json()) == 2
+    assert api.get("/api/movimentos").json() == [] and api.get("/api/pedidos").json() == []
+    assert api.get("/api/inventarios").json() == [] and api.get("/api/tags").json() == []
+
+    # Tudo: sobra só a doca padrão, e os códigos recomeçam do 1
+    api.post("/api/limpar-tudo", json={})
+    assert api.get("/api/produtos").json() == []
+    assert [e["codigo"] for e in api.get("/api/enderecos").json()] == ["DOCA-REC"]
+    assert produto(api) == 1
+    api.post("/api/entradas", json={"produto_id": 1, "lote": "N", "quantidade": 2})
+    assert api.get("/api/resumo").json()["unidades"] == 2

@@ -1,0 +1,11 @@
+{
+  "name": "Mini WMS - Coletor",
+  "short_name": "WMS Coletor",
+  "start_url": "/m",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "portrait",
+  "background_color": "#f3f5f8",
+  "theme_color": "#000000",
+  "icons": [{ "src": "/static/icone.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
