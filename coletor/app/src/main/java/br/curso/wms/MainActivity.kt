@@ -161,6 +161,7 @@ class MainActivity : Activity() {
         Rfid.aoGatilho = { apertou -> chamarTela("gatilhoRfidEvento", if (apertou) "1" else "0") }
         Rfid.aoAvisar = { msg -> chamarTela("statusRfid", msg) }
         Rfid.aoTerminarLeitura = { n -> chamarTela("fimLeituraRfid", n.toString()) }
+        Rfid.aoLocalizar = { distancia -> chamarTela("proximidadeRfid", distancia.toString()) }
         Rfid.conectar(applicationContext) { msg -> chamarTela("statusRfid", msg) }
     }
 
@@ -177,6 +178,8 @@ class MainActivity : Activity() {
         Rfid.aoGatilho = null
         Rfid.aoAvisar = null
         Rfid.aoTerminarLeitura = null
+        Rfid.aoLocalizar = null
+        Rfid.definirAlvo(null)
         Rfid.desconectar()
         leitorDataWedge(true)   // devolve o leitor de código de barras para os outros apps
         super.onStop()
@@ -199,7 +202,7 @@ class MainActivity : Activity() {
 
     /** Chama uma função JavaScript da página com um texto (ex.: leituraRfid("E280...")). */
     private fun chamarTela(funcao: String, texto: String) {
-        Log.i(TAG, "para a tela: $funcao($texto)")
+        if (funcao != "proximidadeRfid") Log.i(TAG, "para a tela: $funcao($texto)")
         val js = "window.$funcao && window.$funcao(${JSONObject.quote(texto)})"
         runOnUiThread { if (::web.isInitialized) web.evaluateJavascript(js, null) }
     }
@@ -220,6 +223,13 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun lerRfid(ms: Int) = Rfid.lerPor(ms.toLong())
+
+        /** Tela Localizar: etiqueta procurada ("" = sair) e procurar sem o gatilho. */
+        @JavascriptInterface
+        fun localizar(epc: String) = Rfid.definirAlvo(epc)
+
+        @JavascriptInterface
+        fun procurar(ligar: Boolean) = Rfid.procurar(ligar)
 
         @JavascriptInterface
         fun servidor() = runOnUiThread { configurarServidor() }

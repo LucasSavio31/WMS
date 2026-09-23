@@ -96,6 +96,12 @@
       <button class="botao-gatilho" id="gatilho">▶ SEGURAR PARA LER</button>
     </div>
 
+    <div class="caixa" id="caixaLocalizar" style="display:none">
+      <h2>Localizar: distância até a etiqueta</h2>
+      <p>Procurando <span class="mono" id="alvoSim"></span>. Arraste para "aproximar" o coletor da etiqueta enquanto segura o gatilho.</p>
+      <div class="barra"><span style="font-size:12px">longe</span><input type="range" id="distancia" min="0" max="100" value="15" style="flex:1"><span style="font-size:12px">colado</span></div>
+    </div>
+
     <div class="caixa">
       <h2>Etiquetas RFID ao alcance da antena</h2>
       <p>As marcadas são "vistas" pelo leitor quando o gatilho é apertado em modo RFID.</p>
@@ -125,16 +131,20 @@ const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 const tela = () => $("app").contentWindow;
 
 // ================================================================ o "app" (papel do ColetorApp do Android)
-const estado = { rfid: true, potencia: 100 };
+const estado = { rfid: true, potencia: 100, alvo: null };
 window.ColetorAppSimulado = {
   gatilhoRfid(rfid) { estado.rfid = !!rfid; mostrarEstado(); },
   potencia(pct) { estado.potencia = pct; mostrarEstado(); },
   rfidConectado() { return true; },
+  localizar(epc) { estado.alvo = epc || null; mostrarEstado(); },
+  procurar(ligar) { if (ligar) iniciarLocalizar(); else pararLocalizar(); },
   lerRfid(ms) { apertarGatilhoRfid(); setTimeout(soltarGatilho, ms); },
   servidor() {},
 };
 function mostrarEstado() {
-  $("estado").textContent = estado.rfid ? `RFID · ${estado.potencia}%` : "Código de barras";
+  $("caixaLocalizar").style.display = estado.alvo ? "" : "none";
+  $("alvoSim").textContent = estado.alvo || "";
+  $("estado").textContent = estado.alvo ? "Localizar" : estado.rfid ? `RFID · ${estado.potencia}%` : "Código de barras";
   $("estado").className = "estado" + (estado.rfid ? "" : " barras");
   $("gatilho").textContent = estado.rfid ? `▶ SEGURAR PARA LER RFID (${estado.potencia}%)` : "▶ APERTAR PARA LER CÓDIGO DE BARRAS";
 }
@@ -194,7 +204,24 @@ $("listaCodigos").addEventListener("change", (ev) => { if (ev.target.name === "c
 
 // ================================================================ gatilho
 let lendo = null;
+// Localizar (TagLocationing): manda a "distância relativa" ~8 vezes por segundo
+let localizando = null;
+function iniciarLocalizar() {
+  if (localizando || !estado.alvo) return;
+  $("led").className = "led lendo";
+  localizando = setInterval(() => {
+    const v = Math.max(0, Math.min(100, Number($("distancia").value) + Math.round((Math.random() - 0.5) * 8)));
+    tela().proximidadeRfid?.(String(v));
+  }, 120);
+}
+function pararLocalizar() {
+  if (!localizando) return;
+  clearInterval(localizando); localizando = null;
+  $("led").className = "led";
+  tela().proximidadeRfid?.("-1");
+}
 function apertarGatilho() {
+  if (estado.alvo && estado.rfid) { $("gatilho").classList.add("apertado"); tela().gatilhoRfidEvento?.("1"); iniciarLocalizar(); lendo = "localizar"; return; }
   if (lendo) return;
   $("gatilho").classList.add("apertado");
   if (estado.rfid) {
@@ -227,6 +254,7 @@ function apertarGatilhoRfid() {
   lendo = setInterval(() => { const t = fila.shift(); if (t) { lidasNaLeitura++; tela().leituraRfid?.(t.epc); } }, 120);
 }
 function soltarGatilho() {
+  if (lendo === "localizar") { lendo = null; $("gatilho").classList.remove("apertado"); tela().gatilhoRfidEvento?.("0"); pararLocalizar(); return; }
   if (!lendo) return;
   if (typeof lendo === "number") {   // Inventory.stop()
     clearInterval(lendo);

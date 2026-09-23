@@ -347,6 +347,12 @@ def listar_tags(status: Optional[str] = None, limite: int = 200, con: Con = Depe
         ((status,) if status else ()) + (limite,)))
 
 
+@app.post("/api/tags/{epc}/estornar")
+def estornar_tag(epc: str, con: Con = Depends(conexao)):
+    """Desfaz a baixa de uma etiqueta lida por engano."""
+    return estoque.estornar_baixa_tag(con, epc)
+
+
 @app.get("/api/tags/{epc}")
 def consultar_tag(epc: str, con: Con = Depends(conexao)):
     return dict(estoque.buscar_tag(con, epc))

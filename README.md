@@ -33,20 +33,16 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 
 ## Funções
 
-| Função | PC (navegador) | Coletor |
-|---|---|---|
-| Painel com indicadores (validade, mínimo, doca, pedidos, entradas/saídas do dia) | ✔ | — |
-| Cadastro de produtos (SKU, EAN, unidade, mínimo, ativo/inativo) | ✔ | — |
-| Cadastro de endereços (doca de recebimento, A-01-01, expedição) | ✔ | — |
-| Posição de estoque por produto, lote e endereço, com filtros e exportação CSV | ✔ | Consulta |
-| Ordem de recebimento: o PC cadastra NF, itens, lotes e quantidades; o coletor lê as etiquetas e cada leitura aparece no PC na hora | Cria, acompanha ao vivo, finaliza | Escolhe o item, lê as etiquetas RFID (ou informa a quantidade), finaliza |
-| Entrada avulsa (sem ordem) com nota fiscal; lote novo vai para a doca | Quantidade digitada | RFID (cada tag = 1 unidade) ou código de barras + quantidade |
-| Armazenagem / transferência de lote entre endereços | ✔ | — |
-| Bloqueio de lote (quarentena) e liberação | ✔ | — |
-| Baixa: FEFO automático, lote escolhido (descarte) ou por EPC | ✔ | RFID ou código de barras + quantidade (FEFO) |
-| Pedidos / expedição: reserva FEFO, lista de separação por endereço, conferência e baixa | ✔ | — |
-| Inventário (contagem × sistema, acuracidade, fechar ou cancelar) | ✔ | Contar por RFID ou por código de barras |
-| Movimentos (kardex) com saldo após cada movimento, filtros e CSV | ✔ | — |
+| Onde | O quê |
+|---|---|
+| PC | **Produtos**: cadastro (SKU, descrição, EAN, unidade, mínimo) |
+| PC | **Ordens de recebimento**: nota fiscal, fornecedor e itens esperados (lote e validade opcionais); acompanha as leituras do coletor ao vivo e finaliza |
+| PC | **Estoque**, **Inventário** (resultado e fechamento) e **Histórico** (com CSV) |
+| Coletor | **Recebimento**: escolhe a ordem e o item, lê as etiquetas (cada uma vai na hora para o servidor) |
+| Coletor | **Entrada** sem ordem: produto, lote, etiquetas RFID ou quantidade |
+| Coletor | **Baixa automática**: cada etiqueta lida é baixada na hora (potência 30%); "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade (FEFO) |
+| Coletor | **Inventário**: inicia no coletor, lê as etiquetas; ao finalizar, etiqueta não lida sai e etiqueta achada volta |
+| Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 
 **FEFO** (*First Expired, First Out*): na baixa por quantidade e nos pedidos, o servidor tira primeiro do lote
 que vence antes. Ficam de fora: lotes **vencidos** (a não ser que o motivo da baixa seja `VENCIMENTO`),

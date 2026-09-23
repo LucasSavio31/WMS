@@ -307,3 +307,32 @@ def test_ordem_de_recebimento_online(api):
     assert api.post(f"/api/recebimentos/{rec2}/cancelar").json()["status"] == "CANCELADO"
     api.post("/api/limpar-tudo", json={"manter_cadastros": True})
     assert api.get("/api/recebimentos").json() == []
+
+
+def test_inventario_por_rfid_e_estorno(api):
+    pid = produto(api)
+    rec = api.post("/api/recebimentos", json={"itens": [{"produto_id": pid, "quantidade": 4}]}).json()["id"]  # lote opcional
+    api.post(f"/api/recebimentos/{rec}/leituras", json={"epcs": ["T1", "T2", "T3", "T4"]})
+    api.post(f"/api/recebimentos/{rec}/finalizar")
+    assert saldo(api, "SEM-LOTE") == 4
+    # unidade sem etiqueta no mesmo produto (não entra no inventário RFID)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "CX", "quantidade": 5})
+
+    # baixa por leitura e estorno (leitura por engano)
+    api.post("/api/baixas", json={"epcs": ["T4"], "origem": "COLETOR", "meio": "RFID"})
+    assert saldo(api, "SEM-LOTE") == 3
+    assert api.post("/api/tags/T4/estornar").status_code == 200
+    assert saldo(api, "SEM-LOTE") == 4 and api.get("/api/tags/T4").json()["status"] == "ATIVA"
+    assert api.post("/api/tags/T4/estornar").status_code == 400          # já está em estoque
+    api.post("/api/baixas", json={"epcs": ["T3"]})                        # T3 sai de verdade
+
+    # inventário lendo etiquetas: T1, T2 e T3 (baixada, mas achada); T4 não foi lida
+    inv = api.post("/api/inventarios", json={"nome": "RFID"}).json()["id"]
+    api.post(f"/api/inventarios/{inv}/contagens", json={"epcs": ["T1", "T2", "T3"], "origem": "COLETOR", "meio": "RFID"})
+    conf = {c["lote"]: c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"]}
+    assert "CX" not in conf                                               # sem etiqueta: fora da conta
+    assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
+    r = api.post(f"/api/inventarios/{inv}/fechar").json()
+    assert (r["faltas"], r["sobras"]) == (1, 1)
+    assert api.get("/api/tags/T4").json()["status"] == "BAIXADA" and api.get("/api/tags/T3").json()["status"] == "ATIVA"
+    assert saldo(api, "SEM-LOTE") == 3 and saldo(api, "CX") == 5

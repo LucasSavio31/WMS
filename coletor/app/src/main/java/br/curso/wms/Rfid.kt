@@ -36,6 +36,10 @@ import kotlin.concurrent.thread
  *    (OperationFailureException) e às vezes o leitor para de responder.
  *  - Com o gatilho em modo CÓDIGO DE BARRAS, apertar o gatilho não liga o RFID.
  *
+ * Localizar etiqueta: com um EPC escolhido (definirAlvo), o gatilho faz
+ * TagLocationing.Perform(epc) e o leitor devolve a "distância relativa"
+ * (0 = longe, 100 = colado), que a tela mostra como quente/frio.
+ *
  * Todo erro do SDK é tratado aqui (catch Throwable): um problema no RFID
  * nunca pode fechar o app, só aparecer como mensagem na tela.
  */
@@ -55,6 +59,9 @@ object Rfid : RfidEventsListener {
     /** Fim de cada leitura: quantas etiquetas o leitor viu (ajuda a achar problemas). */
     var aoTerminarLeitura: ((Int) -> Unit)? = null
 
+    /** Localizar: proximidade da etiqueta procurada, de 0 (longe) a 100 (colado). */
+    var aoLocalizar: ((Int) -> Unit)? = null
+
     /** Problemas do leitor viram mensagem na tela (em vez de sumir em silêncio). */
     var aoAvisar: ((String) -> Unit)? = null
 
@@ -64,6 +71,8 @@ object Rfid : RfidEventsListener {
     @Volatile private var modoRfid = true           // o que a tela quer (chave RFID / Código)
     @Volatile private var lendo = false             // Inventory.perform() em andamento
     @Volatile private var lidasNaLeitura = 0
+    @Volatile private var alvo: String? = null      // EPC procurado na tela Localizar
+    @Volatile private var localizando = false
     private var modoNoLeitor: Boolean? = null       // o que já foi enviado ao leitor
     private var potenciaNoLeitor: Int? = null
 
@@ -184,9 +193,11 @@ object Rfid : RfidEventsListener {
 
     private fun soltarLeitor() {
         try {
+            if (localizando) leitor?.Actions?.TagLocationing?.Stop()
             if (lendo) leitor?.Actions?.Inventory?.stop()
         } catch (e: Throwable) {
         }
+        localizando = false
         try {
             leitor?.Events?.removeEventsListener(this)
             leitor?.disconnect()
@@ -224,6 +235,7 @@ object Rfid : RfidEventsListener {
     private fun aplicarModo(r: RFIDReader) {
         if (modoNoLeitor == modoRfid) return
         if (lendo) parar(r)
+        pararLocalizar(r)
         r.Config.setTriggerMode(if (modoRfid) ENUM_TRIGGER_MODE.RFID_MODE else ENUM_TRIGGER_MODE.BARCODE_MODE, true)
         modoNoLeitor = modoRfid
     }
@@ -234,6 +246,7 @@ object Rfid : RfidEventsListener {
             val r = leitor ?: return@naFila
             if (potenciaNoLeitor == percentual) return@naFila
             if (lendo) parar(r)
+            pararLocalizar(r)
             val niveis = r.ReaderCapabilities.transmitPowerLevelValues
             val config = r.Config.Antennas.getAntennaRfConfig(1)
             config.setTransmitPowerIndex((niveis.size - 1) * percentual / 100)
@@ -273,6 +286,44 @@ object Rfid : RfidEventsListener {
         aoTerminarLeitura?.invoke(lidasNaLeitura)
     }
 
+    // ------------------------------------------------ localizar etiqueta
+
+    /** Escolhe a etiqueta procurada (null = sai do modo localizar). */
+    fun definirAlvo(epc: String?) {
+        alvo = epc?.trim()?.uppercase()?.ifEmpty { null }
+        log("localizar: alvo ${alvo ?: "nenhum"}")
+        if (alvo == null) naFila("não parou a localização") { leitor?.let { pararLocalizar(it) } }
+    }
+
+    /** Liga/desliga a procura sem usar o gatilho (botão da tela). */
+    fun procurar(ligar: Boolean) {
+        naFila(if (ligar) "não começou a localização" else "não parou a localização") {
+            val r = leitor ?: return@naFila
+            if (ligar) iniciarLocalizar(r) else pararLocalizar(r)
+        }
+    }
+
+    private fun iniciarLocalizar(r: RFIDReader) {
+        val epc = alvo ?: return
+        if (localizando) return
+        if (lendo) parar(r)
+        log("localizar: procurando $epc")
+        r.Actions.TagLocationing.Perform(epc, null, null)
+        localizando = true
+    }
+
+    private fun pararLocalizar(r: RFIDReader) {
+        if (!localizando) return
+        localizando = false
+        try {
+            r.Actions.TagLocationing.Stop()
+        } catch (e: Throwable) {
+            r.Actions.Inventory.stop()
+        }
+        log("localizar: parou")
+        aoLocalizar?.invoke(-1)   // -1 = procura parada
+    }
+
     /** Lê por alguns segundos sem usar o gatilho (botão "Ler 3 s" da tela). */
     fun lerPor(ms: Long) {
         log("ler por $ms ms (leitor ${if (leitor == null) "NÃO conectado" else "conectado"})")
@@ -295,6 +346,10 @@ object Rfid : RfidEventsListener {
     override fun eventReadNotify(e: RfidReadEvents?) {
         try {
             val tags = leitor?.Actions?.getReadTags(100) ?: return
+            if (localizando) {
+                for (tag in tags) if (tag.isContainsLocationInfo) aoLocalizar?.invoke(tag.LocationInfo.relativeDistance.toInt())
+                return
+            }
             lidasNaLeitura += tags.size
             for (tag in tags) aoLerTag?.invoke(tag.tagID)
         } catch (ex: Throwable) {
@@ -314,6 +369,13 @@ object Rfid : RfidEventsListener {
                 return
             }
             aoGatilho?.invoke(apertou)
+            if (alvo != null) {   // tela Localizar: o gatilho procura a etiqueta escolhida
+                naFila(if (apertou) "não começou a localização" else "não parou a localização") {
+                    val r = leitor ?: return@naFila
+                    if (apertou) iniciarLocalizar(r) else pararLocalizar(r)
+                }
+                return
+            }
             naFila(if (apertou) "não começou a leitura" else "não parou a leitura") {
                 val r = leitor ?: return@naFila
                 if (apertou) iniciar(r) else parar(r)

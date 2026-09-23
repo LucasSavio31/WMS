@@ -27,6 +27,8 @@
 
   Toda regra (FEFO, saldo, validade, data/hora) continua no servidor.
 
+  Telas: Recebimento (ordens do PC), Entrada (sem ordem), Baixa (automática), Inventário e Localizar.
+
   Dentro do app "Coletor WMS" (Android, pasta coletor/):
     - o RFID é lido pelo app (SDK Zebra) e chega aqui por leituraRfid(epc);
     - a página fala com o app pelo objeto ColetorApp: gatilhoRfid(true/false)
@@ -132,6 +134,8 @@
   .progresso { height: 7px; border-radius: 4px; background: var(--bg); overflow: hidden; margin-top: 4px; }
   .progresso > span { display: block; height: 100%; background: var(--primaria); }
   .progresso.completo > span { background: var(--sucesso); }
+  .radar { height: 46px; border-radius: 23px; background: var(--bg); border: 1px solid var(--borda); overflow: hidden; margin: 14px 0 8px; }
+  .radar-barra { height: 100%; width: 0; background: hsl(220, 85%, 50%); transition: width .15s, background .15s; }
   .lista li.escolhido { background: var(--fundo-info); box-shadow: inset 4px 0 0 var(--primaria); }
   .selo { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 11.5px; font-weight: 700; background: var(--bg); color: var(--texto-2); white-space: nowrap; }
   .selo.perigo { background: var(--fundo-perigo); color: var(--perigo); } .selo.alerta { background: var(--fundo-alerta); color: var(--alerta); }
@@ -589,6 +593,7 @@ let telaAtual = "menu";
 const tela = $("tela");
 function abrir(nome) {
   if (!telas[nome]) nome = "menu";
+  if (telaAtual === "localizar" && nome !== "localizar") telas.localizar.sair();
   telaAtual = nome;
   $("titulo").textContent = telas[nome].titulo;
   $("voltar").style.visibility = nome === "menu" ? "hidden" : "visible";
@@ -614,20 +619,20 @@ telas.menu = {
   async abrir() {
     const item = (hash, ic, nome, id = "") => `<a class="tile" href="#${hash}" style="text-decoration:none"><span class="ic">${ic}</span>${nome}<span class="badge" id="${id}"></span></a>`;
     tela.innerHTML = `<div class="grade-menu">
-      ${item("entrada", "📥", "Recebimento")}${item("armazenar", "📦", "Armazenar", "bDoca")}
-      ${item("baixa", "📤", "Baixa")}${item("separacao", "🛒", "Separação", "bPed")}
-      ${item("inventario", "📋", "Inventário", "bInv")}${item("consulta", "🔍", "Consulta")}
+      ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
+      ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
+      ${item("localizar", "🎯", "Localizar etiqueta")}
     </div>
     <p class="fraco" style="text-align:center;margin-top:14px" id="infoServidor"></p>`;
     try {
-      const [r, s] = await Promise.all([api("GET", "/api/resumo"), api("GET", "/api/status")]);
+      const [r, st] = await Promise.all([api("GET", "/api/resumo"), api("GET", "/api/status")]);
       if (telaAtual !== "menu") return;
-      $("bDoca").textContent = r.na_doca || ""; $("bPed").textContent = r.pedidos_abertos || ""; $("bInv").textContent = r.inventarios_abertos || "";
-      $("infoServidor").textContent = `Servidor ${location.host} · ${dataBR(s.data_hora)} ${s.data_hora.slice(11, 16)}`;
+      $("bRec").textContent = r.recebimentos_abertos || ""; $("bInv").textContent = r.inventarios_abertos || "";
+      $("infoServidor").textContent = `Servidor ${location.host} · ${dataBR(st.data_hora)} ${st.data_hora.slice(11, 16)}`;
     } catch (e) { msg(e.message, "erro"); }
   },
-  codigo(c) { location.hash = "consulta"; setTimeout(() => telas.consulta.codigo(c), 50); },
-  rfid(epc) { location.hash = "consulta"; setTimeout(() => telas.consulta.rfid(epc), 50); },
+  rfid() { msg("Escolha uma opção do menu", "info", false); },
+  codigo() { msg("Escolha uma opção do menu", "info", false); },
 };
 
 // ======================================================================= ENTRADA AVULSA (sem ordem)
@@ -726,8 +731,7 @@ telas.entrada = {
   gatilho: "barras",
   async abrir() {
     this.ordem = null; this.itemId = null; this.buffer = []; this.confirmando = false;
-    tela.innerHTML = `<div class="card"><h2>Ordens de recebimento abertas</h2><ul class="lista" id="orLista"><li class="vazio">Carregando…</li></ul></div>
-      <div class="botoes"><button class="b" onclick="location.hash='avulsa'">➕ Entrada avulsa (sem ordem)</button></div>`;
+    tela.innerHTML = `<div class="card"><h2>Ordens de recebimento abertas</h2><ul class="lista" id="orLista"><li class="vazio">Carregando…</li></ul></div>`;
     try {
       const lista = (await api("GET", "/api/recebimentos")).filter((r) => r.status === "ABERTO");
       if (telaAtual !== "entrada" || !$("orLista")) return;
@@ -735,7 +739,7 @@ telas.entrada = {
           <div class="info"><b>${esc(r.numero)}</b>${r.documento ? " · " + esc(r.documento) : ""}
             <div class="fraco">${esc(r.fornecedor || "")} ${r.itens} item(ns)</div>${barraProgresso(r.lidas, r.prevista)}</div>
           <span class="qtd">${num(r.lidas)}/${num(r.prevista)}</span></li>`).join("")
-        || `<li class="vazio">Nenhuma ordem aberta.<br>Crie no PC em "Ordens de recebimento" ou use a entrada avulsa.</li>`;
+        || `<li class="vazio">Nenhuma ordem aberta.<br>Crie no PC em "Ordens de recebimento".</li>`;
     } catch (e) { msg(e.message, "erro"); }
   },
   async abrirOrdem(_b, id) {
@@ -833,348 +837,260 @@ telas.entrada = {
   },
 };
 
-// ======================================================================= ARMAZENAR (transferência)
-telas.armazenar = {
-  titulo: "Armazenar / transferir",
-  async abrir() {
-    this.lote = null;
-    definirGatilho("rfid");
-    tela.innerHTML = `<div class="dica">Leia a <b>etiqueta RFID</b> ou bipe o <b>produto</b> para escolher o lote.<br>Depois bipe o <b>endereço</b> de destino.</div>
-      <div class="card" style="margin-top:8px"><h2>Lotes na doca</h2><ul class="lista" id="arDoca"><li class="vazio">Carregando…</li></ul></div>`;
-    try {
-      this.estoque = await api("GET", "/api/estoque");
-      const doca = this.estoque.filter((l) => l.lote_id && l.tipo_endereco === "RECEBIMENTO");
-      if (telaAtual === "armazenar" && $("arDoca")) $("arDoca").innerHTML = doca.map((l) => this.linhaLote(l)).join("") || `<li class="vazio">Nada aguardando armazenagem</li>`;
-    } catch (e) { msg(e.message, "erro"); }
-  },
-  linhaLote: (l) => `<li class="clicavel" data-acao="escolher" data-valor="${l.lote_id}">
-      <div class="info"><b>${esc(l.sku)}</b> · lote ${esc(l.lote)} ${seloValidade(l.validade)}<div class="fraco">${esc(l.descricao)} · em <b>${esc(l.endereco)}</b></div></div>
-      <span class="qtd">${num(l.quantidade)}</span></li>`,
-  async escolher(_b, loteId) {
-    if (!this.estoque) this.estoque = await api("GET", "/api/estoque");
-    const l = this.estoque.find((x) => x.lote_id === Number(loteId));
-    if (!l) return msg("Lote sem saldo", "erro");
-    this.lote = l;
-    definirGatilho("barras");   // agora bipa a etiqueta do endereço
-    tela.innerHTML = `<div class="card"><h2>Lote <span class="dir"><button class="link" data-acao="abrir">trocar</button></span></h2>
-        <div class="produto">${esc(l.sku)} · lote ${esc(l.lote)}</div><div>${esc(l.descricao)}</div>
-        <div class="fraco">Saldo ${num(l.quantidade)} ${esc(l.unidade)} · validade ${dataBR(l.validade)} · está em <b>${esc(l.endereco)}</b></div></div>
-      <div class="dica">Bipe a <b>etiqueta do endereço</b> de destino<br>ou escolha abaixo</div>
-      <div class="card" style="margin-top:8px"><label class="campo"><span>Destino</span>
-        <select id="arDestino">${opcoesEndereco(enderecos.find((e) => e.tipo === "ARMAZENAGEM" && e.codigo !== l.endereco)?.id)}</select></label>
-        <div class="botoes"><button class="b primario" data-acao="confirmar" id="arBotao">Transferir</button></div></div>`;
-    msg(`Lote ${l.lote} escolhido`, "info");
-  },
-  async rfid(epc) {
-    await executar(null, async () => {
-      const t = await api("GET", "/api/tags/" + encodeURIComponent(epc));
-      if (t.status !== "ATIVA") throw new Error(`Tag ${epc} já foi baixada`);
-      this.estoque = await api("GET", "/api/estoque");
-      await this.escolher(null, t.lote_id);
-    });
-  },
-  async codigo(c) {
-    await executar(null, async () => {
-      const p = await buscarProduto(c);
-      this.estoque = await api("GET", "/api/estoque");
-      const lotes = this.estoque.filter((l) => l.produto_id === p.id && l.lote_id);
-      if (!lotes.length) throw new Error(`${p.sku} está sem saldo`);
-      if (lotes.length === 1) return this.escolher(null, lotes[0].lote_id);
-      tela.innerHTML = `<div class="card"><h2>Escolha o lote de ${esc(p.sku)}</h2><ul class="lista">${lotes.map((l) => this.linhaLote(l)).join("")}</ul></div>`;
-      bipe("ok");
-    });
-  },
-  endereco(e) {
-    if (!this.lote) return msg("Escolha primeiro o lote (RFID ou produto)", "alerta");
-    $("arDestino").value = e.id;
-    this.confirmar();
-  },
-  async confirmar() {
-    await executar($("arBotao"), async () => {
-      const r = await api("POST", `/api/lotes/${this.lote.lote_id}/transferir`, { endereco_id: Number($("arDestino").value), origem: "COLETOR", meio: "BARRAS" });
-      await this.abrir();
-      msg(`OK: lote ${r.lote}\n${r.de} → ${r.para}`);
-    });
-  },
-};
-
-// ======================================================================= BAIXA
+// ======================================================================= BAIXA (automática)
+// Cada etiqueta lida é baixada NA HORA. Leu por engano? "desfazer" devolve ao estoque.
+// A potência da antena fica baixa (30%) nesta tela: lê só o que está bem perto.
 telas.baixa = {
   titulo: "Baixa",
   abrir() {
-    this.produto = null; this.tags = new Map();
-    tela.innerHTML = `<div class="card"><div class="duas">
+    this.baixadas = []; this.buffer = []; this.vistas = new Set();
+    tela.innerHTML = `<div class="card">
         <label class="campo"><span>Motivo</span><select id="bxMotivo">${motivos.map((m) => `<option>${m}</option>`).join("")}</select></label>
-        <label class="campo"><span>Documento</span><input id="bxDoc"></label></div></div>
-      <div id="bxCorpo"></div>`;
+        <p class="fraco" style="margin:0">Aperte o gatilho perto das etiquetas: cada uma lida é <b>baixada na hora</b>.
+          Leu por engano? Toque em <b>desfazer</b>. Produto sem etiqueta: bipe o código de barras.</p></div>
+      <div class="card"><h2>Baixadas agora <span class="dir"><span class="contador" id="bxCont">0</span></span></h2>
+        <ul class="lista" id="bxLista"></ul></div>`;
     this.desenhar();
   },
   desenhar() {
-    const corpo = $("bxCorpo");
-    if (this.produto) {
-      corpo.innerHTML = cartaoProduto(this.produto) + `<div class="card">
-          <label class="campo"><span>Quantidade (sai por FEFO)</span><input id="bxQtd" inputmode="decimal" enterkeyhint="done" data-enter="baixarQtd"></label>
-          <div id="bxPrevia" class="fraco"></div></div>
-        <div class="botoes"><button class="b" data-acao="limpar">Limpar</button><button class="b perigo" data-acao="baixarQtd" id="bxBotao">Baixar</button></div>`;
-      $("bxQtd").addEventListener("input", () => { clearTimeout(this.t); this.t = setTimeout(() => this.previa(), 300); });
-      digitar($("bxQtd"));
-    } else if (this.tags.size) {
-      const validas = [...this.tags.values()].filter((t) => t.ok).length;
-      corpo.innerHTML = `<div class="card"><h2>Etiquetas lidas <span class="dir"><span class="contador">${validas}</span></span></h2>
-          <ul class="lista">${[...this.tags.values()].reverse().map((t) => `<li class="${t.ok ? "" : "erro"}">
-            <div class="info"><div>${esc(t.info)}</div><div class="mono fraco">${esc(t.epc)}</div></div>
-            <button class="x" data-acao="removerTag" data-valor="${esc(t.epc)}">✕</button></li>`).join("")}</ul>
-          <p class="fraco">Confira a lista: tag lida por engano pode ser removida no ✕ antes de baixar.</p></div>
-        <div class="botoes"><button class="b" data-acao="limpar">Limpar</button><button class="b perigo" data-acao="baixarTags" id="bxBotao" ${validas ? "" : "disabled"}>Baixar ${validas} tag(s)</button></div>`;
-    } else {
-      corpo.innerHTML = `<div class="dica">Aperte o gatilho perto das <b>etiquetas RFID</b><br>ou bipe o <b>código de barras</b> do produto</div>`;
-    }
+    if (!$("bxLista")) return;
+    $("bxCont").textContent = this.baixadas.filter((b) => (b.ok && !b.desfeita) || b.qtd).length;
+    $("bxLista").innerHTML = this.baixadas.slice(0, 100).map((b) => `<li class="${b.ok || b.qtd ? "" : "erro"}">
+        <div class="info"><div ${b.desfeita ? 'style="text-decoration:line-through"' : ""}>${esc(b.info)}</div>
+          <div class="mono fraco">${esc(b.epc)}${b.desfeita ? " · desfeita (voltou ao estoque)" : ""}</div></div>
+        ${b.ok && !b.desfeita ? `<button class="link" data-acao="desfazer" data-valor="${esc(b.epc)}">desfazer</button>` : ""}</li>`).join("")
+      || `<li class="vazio">Nenhuma etiqueta baixada ainda</li>`;
   },
-  async previa() {
-    const q = numero($("bxQtd")?.value);
-    if (!(q > 0)) { $("bxPrevia").textContent = ""; return; }
-    try {
-      const plano = await api("GET", `/api/fefo?produto_id=${this.produto.id}&quantidade=${q}&motivo=${$("bxMotivo").value}`);
-      $("bxPrevia").innerHTML = "Sai de: " + plano.map((l) => `<b>${num(l.quantidade)}</b> do lote ${esc(l.lote)} em <b>${esc(l.endereco)}</b>`).join(", ");
-    } catch (e) { $("bxPrevia").innerHTML = `<span style="color:var(--perigo)">${esc(e.message)}</span>`; }
-  },
+  // Produto sem etiqueta: bipa o código de barras, informa a quantidade e sai por FEFO
   async codigo(c) {
-    if (this.tags.size) return msg("Baixe ou limpe as etiquetas lidas antes", "alerta");
-    await executar(null, async () => { this.produto = await buscarProduto(c); this.desenhar(); msg(`${this.produto.sku} · informe a quantidade`, "info"); });
-  },
-  async rfid(epc) {
-    if (this.produto) return msg("Termine a baixa por quantidade ou toque em Limpar", "alerta");
-    if (this.tags.has(epc)) return;
-    const t = { epc, ok: false, info: "consultando…" };
-    this.tags.set(epc, t); this.desenhar();
-    try {
-      const tag = await api("GET", "/api/tags/" + encodeURIComponent(epc));
-      t.ok = tag.status === "ATIVA";
-      t.info = `${tag.sku} · lote ${tag.lote}` + (t.ok ? "" : " · JÁ BAIXADA");
-      bipe(t.ok ? "ok" : "erro");
-    } catch { t.info = "tag não cadastrada"; bipe("erro"); }
-    if (telaAtual === "baixa") this.desenhar();
-  },
-  removerTag(_b, epc) { this.tags.delete(epc); this.desenhar(); },
-  trocarProduto() { this.produto = null; this.desenhar(); },
-  limpar() { this.produto = null; this.tags = new Map(); this.desenhar(); msg(""); },
-  async baixarQtd() {
-    const q = numero($("bxQtd").value);
-    if (!(q > 0)) return msg("Informe a quantidade", "alerta");
-    await executar($("bxBotao"), async () => {
-      const r = await api("POST", "/api/baixas", { produto_id: this.produto.id, quantidade: q, motivo: $("bxMotivo").value,
-        documento: $("bxDoc").value, origem: "COLETOR", meio: "BARRAS" });
-      this.limpar();
-      msg("OK: baixa por FEFO\n" + r.lotes.map((l) => `${num(l.quantidade)} do lote ${l.lote} (${l.endereco})`).join("\n"));
-    });
-  },
-  async baixarTags() {
-    const epcs = [...this.tags.values()].filter((t) => t.ok).map((t) => t.epc);
-    await executar($("bxBotao"), async () => {
-      const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo").value, documento: $("bxDoc").value, origem: "COLETOR", meio: "RFID" });
-      const ok = r.tags.filter((t) => t.ok), erros = r.tags.filter((t) => !t.ok);
-      const avisos = [...new Set(ok.flatMap((t) => t.avisos))];
-      this.limpar();
-      msg(`OK: ${ok.length} de ${r.tags.length} tag(s) baixada(s)` + erros.map((t) => `\n✕ ${t.epc}: ${t.erro}`).join("") +
-        avisos.map((a) => "\n⚠ " + a).join(""), erros.length ? "erro" : avisos.length ? "alerta" : "ok");
-    });
-  },
-};
-
-// ======================================================================= SEPARAÇÃO (pedidos)
-telas.separacao = {
-  titulo: "Separação",
-  gatilho: "barras",
-  async abrir() {
-    this.pedido = null;
-    tela.innerHTML = `<div class="card"><h2>Pedidos em aberto</h2><ul class="lista" id="spLista"><li class="vazio">Carregando…</li></ul></div>`;
-    try {
-      const lista = (await api("GET", "/api/pedidos")).filter((p) => ["ABERTO", "SEPARANDO"].includes(p.status));
-      if (telaAtual !== "separacao" || !$("spLista")) return;
-      $("spLista").innerHTML = lista.map((p) => `<li class="clicavel" data-acao="abrirPedido" data-valor="${p.id}">
-          <div class="info"><b>${esc(p.numero)}</b> · ${esc(p.cliente)}<div class="fraco">${p.itens} item(ns) · ${num(p.unidades)} un.</div></div>
-          <span class="selo ${p.status === "SEPARANDO" ? "alerta" : "info"}">${p.status === "SEPARANDO" ? "separando" : "aberto"}</span></li>`).join("")
-        || `<li class="vazio">Nenhum pedido em aberto. Crie os pedidos no PC.</li>`;
-    } catch (e) { msg(e.message, "erro"); }
-  },
-  async abrirPedido(_b, id) {
-    await executar(null, async () => {
-      const d = await api("GET", "/api/pedidos/" + id);
-      if (!this.pedido || this.pedido.pedido.id !== d.pedido.id) this.conferidos = new Set();
-      this.pedido = d;
-      const p = d.pedido;
-      if (p.status === "ABERTO") {
-        tela.innerHTML = `<div class="card"><div class="produto">${esc(p.numero)}</div><div>${esc(p.cliente)}</div></div>
-          <div class="card"><h2>Itens</h2><ul class="lista">${d.itens.map((i) => `<li><div class="info"><b>${esc(i.sku)}</b><div class="fraco">${esc(i.descricao)}</div></div><span class="qtd">${num(i.quantidade)} ${esc(i.unidade)}</span></li>`).join("")}</ul></div>
-          <div class="botoes"><button class="b primario" data-acao="liberar" id="spBotao">Liberar e separar</button></div>`;
-        return;
-      }
-      this.desenharSeparacao();
-    });
-  },
-  desenharSeparacao() {
-    const d = this.pedido, total = d.separacao.length, feitos = this.conferidos.size;
-    tela.innerHTML = `<div class="card"><h2>${esc(d.pedido.numero)} · ${esc(d.pedido.cliente)} <span class="dir"><span class="contador">${feitos}/${total}</span></span></h2>
-        <p class="fraco" style="margin:0">Vá até o endereço, pegue a quantidade e <b>bipe o produto</b> (ou toque na linha).</p></div>
-      <div class="card"><ul class="lista">${d.separacao.map((s, i) => `<li class="clicavel ${this.conferidos.has(i) ? "ok" : ""}" data-acao="alternar" data-valor="${i}">
-          <span class="check">${this.conferidos.has(i) ? "✓" : ""}</span>
-          <div class="info"><b style="font-size:17px">${esc(s.endereco)}</b><div><b>${esc(s.sku)}</b> · lote ${esc(s.lote)}</div><div class="fraco">${esc(s.descricao)} · val. ${dataBR(s.validade)}</div></div>
-          <span class="qtd">${num(s.quantidade)} ${esc(s.unidade)}</span></li>`).join("")}</ul></div>
-      <div class="botoes"><button class="b" data-acao="abrir">Pedidos</button>
-        <button class="b sucesso" data-acao="expedir" id="spBotao" ${feitos < total ? "disabled" : ""}>Confirmar expedição</button></div>`;
-  },
-  alternar(_b, i) {
-    i = Number(i);
-    if (this.conferidos.has(i)) this.conferidos.delete(i); else this.conferidos.add(i);
-    this.desenharSeparacao();
-  },
-  async codigo(c) {
-    if (!this.pedido || this.pedido.pedido.status !== "SEPARANDO") return msg("Abra um pedido em separação", "alerta");
     await executar(null, async () => {
       const p = await buscarProduto(c);
-      const i = this.pedido.separacao.findIndex((s, n) => s.sku === p.sku && !this.conferidos.has(n));
-      if (i < 0) {
-        const tem = this.pedido.separacao.some((s) => s.sku === p.sku);
-        throw new Error(tem ? `${p.sku} já foi todo conferido` : `${p.sku} NÃO está neste pedido`);
-      }
-      this.conferidos.add(i);
-      this.desenharSeparacao();
-      const s = this.pedido.separacao[i];
-      msg(`✓ ${s.sku}: ${num(s.quantidade)} ${s.unidade} do lote ${s.lote}`);
+      this.produto = p;
+      $("bxQtdCard")?.remove();
+      $("bxLista").closest(".card").insertAdjacentHTML("beforebegin", `<div class="card" id="bxQtdCard"><h2>Baixa por quantidade</h2>
+        <div class="produto">${esc(p.sku)}</div><div class="fraco">${esc(p.descricao)} · sai do lote que vence primeiro</div>
+        <label class="campo" style="margin-top:6px"><span>Quantidade</span><input id="bxQtd" inputmode="decimal" enterkeyhint="done" data-enter="baixarQtd"></label>
+        <div class="botoes"><button class="b" data-acao="fecharQtd">Cancelar</button><button class="b perigo" data-acao="baixarQtd" id="bxQtdBotao">Baixar</button></div></div>`);
+      digitar($("bxQtd"));
     });
   },
-  async liberar() {
-    await executar($("spBotao"), async () => {
-      await api("POST", `/api/pedidos/${this.pedido.pedido.id}/liberar`);
-      await this.abrirPedido(null, this.pedido.pedido.id);
-      msg("Estoque reservado por FEFO. Siga a lista de separação.");
+  fecharQtd() { $("bxQtdCard")?.remove(); this.produto = null; },
+  async baixarQtd() {
+    const q = numero($("bxQtd")?.value);
+    if (!(q > 0)) return msg("Informe a quantidade", "alerta");
+    await executar($("bxQtdBotao"), async () => {
+      const r = await api("POST", "/api/baixas", { produto_id: this.produto.id, quantidade: q, motivo: $("bxMotivo").value, origem: "COLETOR", meio: "BARRAS" });
+      for (const l of r.lotes) this.baixadas.unshift({ epc: `${num(l.quantidade)} un. por código de barras`, ok: false, qtd: true, info: `${this.produto.sku} · lote ${l.lote}` });
+      this.fecharQtd(); this.desenhar();
+      msg("✓ Baixa por FEFO: " + r.lotes.map((l) => `${num(l.quantidade)} do lote ${l.lote}`).join(", "));
     });
   },
-  async expedir() {
-    await executar($("spBotao"), async () => {
-      const r = await api("POST", `/api/pedidos/${this.pedido.pedido.id}/expedir`);
-      await this.abrir();
-      msg(`OK: pedido ${r.numero} expedido`);
+  rfid(epc) {
+    if (this.vistas.has(epc)) return;   // a mesma etiqueta só vale uma vez nesta tela
+    this.vistas.add(epc);
+    this.buffer.push(epc);
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.enviar(), 250);
+  },
+  async enviar() {
+    const epcs = this.buffer; this.buffer = [];
+    if (!epcs.length) return;
+    try {
+      const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo")?.value || "CONSUMO", origem: "COLETOR", meio: "RFID" });
+      for (const t of r.tags) this.baixadas.unshift(t.ok ? { epc: t.epc, ok: true, info: `${t.sku} · lote ${t.lote}` } : { epc: t.epc, ok: false, info: t.erro });
+      const ok = r.tags.filter((t) => t.ok).length, erros = r.tags.length - ok;
+      const avisos = [...new Set(r.tags.flatMap((t) => t.avisos || []))];
+      msg((ok ? `✓ ${ok} baixada(s)` : "") + (erros ? `${ok ? "\n" : ""}✕ ${erros} não baixada(s) (veja a lista)` : "") +
+        avisos.map((a) => "\n⚠ " + a).join(""), erros ? (ok ? "alerta" : "erro") : avisos.length ? "alerta" : "ok");
+      if (telaAtual === "baixa") this.desenhar();
+    } catch (e) {
+      epcs.forEach((x) => this.vistas.delete(x));   // falhou a rede: pode ler de novo
+      msg(e.message, "erro");
+    }
+  },
+  async desfazer(b, epc) {
+    await executar(b, async () => {
+      await api("POST", `/api/tags/${encodeURIComponent(epc)}/estornar`);
+      const x = this.baixadas.find((y) => y.epc === epc && y.ok);
+      if (x) x.desfeita = true;
+      this.vistas.delete(epc);
+      this.desenhar();
+      msg("Desfeito: a etiqueta voltou ao estoque", "info");
     });
   },
 };
 
-// ======================================================================= INVENTÁRIO
+// ======================================================================= INVENTÁRIO (RFID)
+// Inicia aqui mesmo, sai lendo; cada leitura vai na hora para o servidor.
+// Finalizar: etiqueta em estoque que não foi lida sai (falta); etiqueta achada volta (sobra).
 telas.inventario = {
   titulo: "Inventário",
   async abrir() {
-    this.tags = new Map(); this.produto = null;
-    tela.innerHTML = `<div class="card"><label class="campo"><span>Inventário</span><select id="ivLista"></select></label></div><div id="ivCorpo"></div>`;
+    this.inv = null; this.buffer = []; this.confirmando = false;
+    tela.innerHTML = `<div class="card"><h2>Inventários abertos</h2><ul class="lista" id="ivLista"><li class="vazio">Carregando…</li></ul></div>
+      <div class="botoes"><button class="b primario" data-acao="novo" id="ivNovo">➕ Novo inventário</button></div>`;
     try {
       const abertos = (await api("GET", "/api/inventarios")).filter((i) => i.status === "ABERTO");
-      if (telaAtual !== "inventario") return;
-      $("ivLista").innerHTML = abertos.map((i) => `<option value="${i.id}">#${i.id} ${esc(i.nome)} (${i.itens} contagens)</option>`).join("");
-      if (!abertos.length) { $("ivCorpo").innerHTML = `<div class="dica">Nenhum inventário aberto.<br>Abra um no PC.</div>`; return; }
-      this.desenhar();
+      if (telaAtual !== "inventario" || !$("ivLista")) return;
+      $("ivLista").innerHTML = abertos.map((i) => `<li class="clicavel" data-acao="abrirInv" data-valor="${i.id}">
+          <div class="info"><b>${esc(i.nome)}</b><div class="fraco">aberto ${dataBR(i.aberto_em)} ${i.aberto_em.slice(11, 16)}</div></div>
+          <span class="qtd">${i.itens} lida(s)</span></li>`).join("") || `<li class="vazio">Nenhum inventário aberto</li>`;
     } catch (e) { msg(e.message, "erro"); }
   },
-  desenhar() {
-    const corpo = $("ivCorpo");
-    if (!corpo || !$("ivLista").value) return;
-    if (this.produto) {
-      const lotes = this.produto.lotes;
-      corpo.innerHTML = cartaoProduto(this.produto) + `<div class="card">
-          <label class="campo"><span>Lote</span><select id="ivLote">${lotes.map((l) => `<option value="${l.id}">${esc(l.lote)} · val. ${dataBR(l.validade)} · ${esc(l.endereco)}</option>`).join("")}</select></label>
-          <label class="campo"><span>Quantidade contada</span><input id="ivQtd" inputmode="decimal" enterkeyhint="done" data-enter="contarQtd"></label></div>
-        <div class="botoes"><button class="b" data-acao="limpar">Limpar</button><button class="b primario" data-acao="contarQtd" id="ivBotao" ${lotes.length ? "" : "disabled"}>Adicionar contagem</button></div>`;
-      if (!lotes.length) msg("Produto sem lote cadastrado: registre a sobra no PC", "alerta");
-      else digitar($("ivQtd"));
-    } else if (this.tags.size) {
-      corpo.innerHTML = `<div class="card"><h2>Etiquetas lidas <span class="dir"><span class="contador">${this.tags.size}</span></span></h2>
-          <ul class="lista">${[...this.tags.values()].reverse().slice(0, 100).map((t) => `<li><div class="info"><div>${esc(t.info)}</div><div class="mono fraco">${esc(t.epc)}</div></div></li>`).join("")}</ul></div>
-        <div class="botoes"><button class="b" data-acao="limpar">Limpar</button><button class="b primario" data-acao="contarTags" id="ivBotao">Enviar ${this.tags.size} tag(s)</button></div>`;
-    } else {
-      corpo.innerHTML = `<div class="dica">Passe o coletor com o <b>gatilho apertado</b> pelas etiquetas RFID<br>ou bipe o <b>código de barras</b> e digite a quantidade</div>`;
-    }
-  },
-  rfid(epc) {
-    if (!$("ivLista")?.value) return msg("Nenhum inventário aberto", "erro");
-    if (this.produto) return msg("Termine a contagem por quantidade ou toque em Limpar", "alerta");
-    if (this.tags.has(epc)) return;
-    const t = { epc, info: "…" };
-    this.tags.set(epc, t);
-    clearTimeout(this.t); this.t = setTimeout(() => this.desenhar(), 150);   // leitura em rajada: redesenha uma vez
-    api("GET", "/api/tags/" + encodeURIComponent(epc)).then((x) => (t.info = `${x.sku} · lote ${x.lote}`)).catch(() => (t.info = "não cadastrada"))
-      .finally(() => { clearTimeout(this.t); this.t = setTimeout(() => telaAtual === "inventario" && this.desenhar(), 150); });
-  },
-  async codigo(c) {
-    if (!$("ivLista")?.value) return msg("Nenhum inventário aberto", "erro");
-    if (this.tags.size) return msg("Envie ou limpe as etiquetas lidas antes", "alerta");
-    await executar(null, async () => { this.produto = await buscarProduto(c); this.desenhar(); bipe("ok"); });
-  },
-  trocarProduto() { this.produto = null; this.desenhar(); },
-  limpar() { this.tags = new Map(); this.produto = null; this.desenhar(); msg(""); },
-  async contarQtd() {
-    const q = numero($("ivQtd").value);
-    if (!(q >= 0) || $("ivQtd").value.trim() === "") return msg("Informe a quantidade contada", "alerta");
-    await executar($("ivBotao"), async () => {
-      const r = await api("POST", `/api/inventarios/${$("ivLista").value}/contagens`, { lote_id: Number($("ivLote").value), quantidade: q, origem: "COLETOR", meio: "BARRAS" });
-      this.limpar();
-      msg(`OK: contado ${num(r.quantidade)} no lote ${r.lote}`);
+  async novo(b) {
+    await executar(b, async () => {
+      const agora = new Date();
+      const r = await api("POST", "/api/inventarios", { nome: `Inventário ${agora.toLocaleDateString("pt-BR")} ${agora.toTimeString().slice(0, 5)}` });
+      await this.abrirInv(null, r.id);
+      msg("Inventário iniciado: aperte o gatilho e passe por todas as etiquetas", "info");
     });
   },
-  async contarTags() {
-    await executar($("ivBotao"), async () => {
-      const r = await api("POST", `/api/inventarios/${$("ivLista").value}/contagens`, { epcs: [...this.tags.keys()], origem: "COLETOR", meio: "RFID" });
-      const novas = r.tags.filter((t) => t.ok && !t.repetida).length, repetidas = r.tags.filter((t) => t.repetida).length;
-      const erros = r.tags.filter((t) => !t.ok);
-      this.limpar();
-      msg(`OK: ${novas} tag(s) contada(s)` + (repetidas ? `\n${repetidas} já tinham sido contadas` : "") +
-        erros.map((t) => `\n✕ ${t.epc}: ${t.erro}`).join(""), erros.length ? "alerta" : "ok");
+  async abrirInv(_b, id) {
+    await executar(null, async () => {
+      this.inv = await api("GET", "/api/inventarios/" + id);
+      if (telaAtual === "inventario") this.desenhar();
+    });
+  },
+  desenhar() {
+    const d = this.inv, c = d.confronto;
+    const sistema = c.reduce((s, x) => s + x.sistema, 0), contado = c.reduce((s, x) => s + x.contado, 0);
+    const faltando = c.reduce((s, x) => s + Math.max(x.sistema - x.contado, 0), 0);
+    const sobras = c.reduce((s, x) => s + Math.max(x.contado - x.sistema, 0), 0);
+    tela.innerHTML = `<div class="card"><h2>${esc(d.inventario.nome)} <span class="dir"><span class="contador">${num(contado)}/${num(sistema)}</span></span></h2>
+        ${barraProgresso(Math.min(contado, sistema), sistema)}
+        <div class="duas" style="margin-top:8px;text-align:center">
+          <div><div class="contador" style="color:var(--alerta)">${num(faltando)}</div><div class="fraco">faltando</div></div>
+          <div><div class="contador" style="color:var(--primaria)">${num(sobras)}</div><div class="fraco">sobrando</div></div>
+        </div></div>
+      <div class="card"><h2>Por produto e lote</h2><ul class="lista">
+        ${c.map((x) => `<li><div class="info"><b>${esc(x.sku)}</b> · lote ${esc(x.lote)}<div class="fraco">${esc(x.descricao)}</div>
+            ${barraProgresso(Math.min(x.contado, x.sistema), x.sistema)}</div>
+          <span class="qtd" style="color:${x.contado < x.sistema ? "var(--alerta)" : x.contado > x.sistema ? "var(--primaria)" : "var(--sucesso)"}">${num(x.contado)}/${num(x.sistema)}</span></li>`).join("")
+          || `<li class="vazio">Nenhuma etiqueta em estoque</li>`}</ul></div>
+      ${this.confirmando ? `<div class="card" style="border-color:var(--alerta)"><h2>Finalizar inventário?</h2>
+          <p style="margin:0 0 8px">O estoque passa a ser o que foi lido:<br>
+            <b>${num(faltando)}</b> etiqueta(s) não lida(s) saem do estoque; <b>${num(sobras)}</b> achada(s) voltam.</p>
+          <div class="botoes"><button class="b" data-acao="voltarConfirmar">Voltar</button><button class="b sucesso" data-acao="finalizar" id="ivFinalizar">Confirmar</button></div></div>`
+        : `<div class="botoes"><button class="b" data-acao="abrir">Inventários</button><button class="b sucesso" data-acao="pedirFinalizar">Finalizar</button></div>`}`;
+  },
+  rfid(epc) {
+    if (!this.inv) return msg("Toque em um inventário ou em Novo inventário", "alerta");
+    this.buffer.push(epc);
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.enviar(), 300);
+  },
+  async enviar() {
+    const epcs = [...new Set(this.buffer)]; this.buffer = [];
+    if (!epcs.length || !this.inv) return;
+    const id = this.inv.inventario.id;
+    try {
+      const r = await api("POST", `/api/inventarios/${id}/contagens`, { epcs, origem: "COLETOR", meio: "RFID" });
+      const novas = r.tags.filter((t) => t.ok && !t.repetida).length, erros = r.tags.filter((t) => !t.ok).length;
+      if (novas || erros) msg((novas ? `✓ ${novas} etiqueta(s) contada(s)` : "") + (erros ? `${novas ? "\n" : ""}✕ ${erros} não cadastrada(s) no sistema` : ""), erros ? "alerta" : "ok");
+      if (telaAtual === "inventario" && this.inv?.inventario.id === id && !this.confirmando) await this.abrirInv(null, id);
+    } catch (e) { msg(e.message, "erro"); }
+  },
+  pedirFinalizar() { this.confirmando = true; this.desenhar(); },
+  voltarConfirmar() { this.confirmando = false; this.desenhar(); },
+  async finalizar() {
+    await executar($("ivFinalizar"), async () => {
+      const r = await api("POST", `/api/inventarios/${this.inv.inventario.id}/fechar`);
+      await this.abrir();
+      msg(`Inventário finalizado: ${num(r.faltas ?? 0)} falta(s) e ${num(r.sobras ?? 0)} sobra(s) ajustadas`);
     });
   },
 };
 
-// ======================================================================= CONSULTA
-telas.consulta = {
-  titulo: "Consulta",
+// ======================================================================= LOCALIZAR ETIQUETA (quente/frio)
+// Escolha a etiqueta, aperte e segure o gatilho e vá andando: quanto mais perto,
+// mais cheia e mais vermelha a barra, e mais rápido o bipe (como um detector).
+telas.localizar = {
+  titulo: "Localizar etiqueta",
   abrir() {
-    tela.innerHTML = `<div class="dica">Leia uma <b>etiqueta RFID</b>, bipe um <b>produto</b><br>ou a <b>etiqueta de um endereço</b></div>
-      ${app ? `<div class="botoes" style="margin-top:8px"><button class="b" data-acao="lerRfid" id="csLer">📡 Ler RFID por 3 s (sem gatilho)</button></div>` : ""}
-      <div id="csCorpo"></div>`;
+    this.alvo = null; this.valor = 0; this.ultimo = 0; this.procurando = false;
+    tela.innerHTML = `<div class="card">
+        <label class="campo"><span>Número da etiqueta (EPC)</span>
+          <input id="lcEpc" class="mono" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="Digite ou escolha na lista" data-enter="definir"></label>
+        <div class="botoes"><button class="b primario" data-acao="definir">Procurar esta etiqueta</button></div></div>
+      <div id="lcCorpo"></div>`;
+    this.lista();
   },
-  lerRfid() {
-    try { app.lerRfid(3000); msg("Lendo RFID por 3 s…", "info", false); } catch (e) { msg("App sem leitura de teste: atualize o ColetorWMS.apk", "erro"); }
+  async lista() {
+    try {
+      const tags = await api("GET", "/api/tags?status=ATIVA&limite=500");
+      if (telaAtual !== "localizar" || this.alvo || !$("lcCorpo")) return;
+      $("lcCorpo").innerHTML = `<div class="card"><h2>Etiquetas em estoque</h2>
+        <input id="lcBusca" placeholder="Filtrar por produto, lote ou final do EPC" style="margin-bottom:6px">
+        <ul class="lista" id="lcLista"></ul></div>`;
+      const desenhar = () => {
+        const f = $("lcBusca").value.trim().toUpperCase();
+        $("lcLista").innerHTML = tags.filter((t) => !f || [t.sku, t.descricao, t.lote, t.epc].some((v) => String(v).toUpperCase().includes(f))).slice(0, 80)
+          .map((t) => `<li class="clicavel" data-acao="escolher" data-valor="${esc(t.epc)}"><div class="info"><b>${esc(t.sku)}</b> · lote ${esc(t.lote)}
+            <div class="mono fraco">${esc(t.epc)}</div></div></li>`).join("") || `<li class="vazio">Nenhuma etiqueta</li>`;
+      };
+      $("lcBusca").addEventListener("input", desenhar);
+      desenhar();
+    } catch (e) { msg(e.message, "erro"); }
   },
-  async rfid(epc) {
-    await executar(null, async () => {
-      const t = await api("GET", "/api/tags/" + encodeURIComponent(epc));
-      $("csCorpo").innerHTML = `<div class="card" style="margin-top:8px"><h2>Etiqueta RFID <span class="dir"><span class="selo ${t.status === "ATIVA" ? "sucesso" : "perigo"}">${t.status === "ATIVA" ? "em estoque" : "baixada"}</span></span></h2>
-        <div class="mono">${esc(t.epc)}</div><div class="produto" style="margin-top:6px">${esc(t.sku)}</div><div>${esc(t.descricao)}</div>
-        <div>Lote <b>${esc(t.lote)}</b> · validade ${dataBR(t.validade)} ${seloValidade(t.validade)}</div>
-        <div>Endereço <b>${esc(t.endereco)}</b> ${t.status_lote === "BLOQUEADO" ? '<span class="selo perigo">lote bloqueado</span>' : ""}</div></div>`;
-      bipe("ok");
-    });
+  escolher(_b, epc) { $("lcEpc").value = epc; this.definir(); },
+  async definir() {
+    const epc = $("lcEpc").value.trim().toUpperCase();
+    if (!/^[0-9A-F]{8,}$/.test(epc)) return msg("Número de etiqueta inválido (EPC em hexadecimal)", "erro");
+    if (!app) return msg("Localizar funciona no app do coletor (leitor RFID)", "alerta");
+    this.alvo = epc; this.valor = 0;
+    try { app.localizar(epc); } catch { return msg("Atualize o ColetorWMS.apk para usar o Localizar", "erro"); }
+    definirGatilho("rfid");
+    let info = "";
+    try { const t = await api("GET", "/api/tags/" + encodeURIComponent(epc)); info = `${t.sku} · lote ${t.lote}`; } catch { info = "etiqueta não cadastrada no sistema"; }
+    $("lcCorpo").innerHTML = `<div class="card" style="text-align:center">
+        <div class="mono">${esc(epc)}</div><div class="fraco">${esc(info)}</div>
+        <div class="radar"><div class="radar-barra" id="lcBarra"></div></div>
+        <div class="contador" id="lcValor">—</div><div id="lcTexto" class="fraco">Aperte e segure o gatilho e vá andando</div>
+        <div class="botoes" style="margin-top:10px"><button class="b" data-acao="alternar" id="lcBotao">▶ Procurar sem o gatilho</button>
+          <button class="b" data-acao="abrir">Trocar etiqueta</button></div></div>`;
+    this.pintar();
   },
-  async codigo(c) {
-    await executar(null, async () => {
-      const p = await buscarProduto(c);
-      const lotes = p.lotes.filter((l) => l.quantidade > 0);
-      const total = lotes.reduce((s, l) => s + l.quantidade, 0);
-      $("csCorpo").innerHTML = `<div class="card" style="margin-top:8px"><h2>Produto <span class="dir"><span class="contador">${num(total)}</span> ${esc(p.unidade)}</span></h2>
-        <div class="produto">${esc(p.sku)}</div><div>${esc(p.descricao)}</div><div class="fraco">EAN ${esc(p.ean || "-")} · mínimo ${num(p.estoque_min)}</div>
-        <ul class="lista" style="margin-top:6px">${lotes.map((l) => `<li><div class="info"><b>${esc(l.endereco)}</b> · lote ${esc(l.lote)} ${seloValidade(l.validade)}
-          ${l.status === "BLOQUEADO" ? '<span class="selo perigo">bloqueado</span>' : ""}<div class="fraco">val. ${dataBR(l.validade)}</div></div><span class="qtd">${num(l.quantidade)}</span></li>`).join("")
-          || '<li class="vazio">Sem saldo</li>'}</ul></div>`;
-      bipe("ok");
-    });
+  alternar() {
+    this.procurando = !this.procurando;
+    try { app.procurar(this.procurando); } catch {}
+    $("lcBotao").textContent = this.procurando ? "■ Parar" : "▶ Procurar sem o gatilho";
   },
-  async endereco(e) {
-    await executar(null, async () => {
-      const lotes = (await api("GET", "/api/estoque")).filter((l) => l.lote_id && l.endereco === e.codigo);
-      $("csCorpo").innerHTML = `<div class="card" style="margin-top:8px"><h2>Endereço <span class="dir"><span class="selo info">${esc(e.tipo.toLowerCase())}</span></span></h2>
-        <div class="produto">${esc(e.codigo)}</div><div class="fraco">${esc(e.descricao || "")}</div>
-        <ul class="lista" style="margin-top:6px">${lotes.map((l) => `<li><div class="info"><b>${esc(l.sku)}</b> · lote ${esc(l.lote)} ${seloValidade(l.validade)}<div class="fraco">${esc(l.descricao)}</div></div><span class="qtd">${num(l.quantidade)}</span></li>`).join("")
-          || '<li class="vazio">Endereço vazio</li>'}</ul></div>`;
-      bipe("ok");
-    });
+  proximidade(v) {
+    if (v < 0) { this.valor = 0; this.ultimo = 0; this.pintar("parado"); return; }
+    this.valor = v; this.ultimo = performance.now(); this.pintar();
+  },
+  pintar(estado) {
+    const barra = $("lcBarra"); if (!barra) return;
+    const v = this.valor;
+    barra.style.width = v + "%";
+    barra.style.background = `hsl(${Math.round(220 - 2.2 * v)}, 85%, 50%)`;   // azul (frio) → vermelho (quente)
+    $("lcValor").textContent = estado === "parado" || !this.ultimo ? "—" : v + "%";
+    $("lcTexto").textContent = estado === "parado" ? "Parado. Aperte o gatilho para procurar."
+      : !this.ultimo ? "Aperte e segure o gatilho e vá andando"
+      : v >= 80 ? "🔥 Muito quente: está aqui!" : v >= 50 ? "Quente" : v >= 20 ? "Morno" : "❄ Frio";
+  },
+  // Bipe tipo detector: mais perto = mais rápido e mais agudo. Sem sinal há 0,8 s = esfria.
+  tique() {
+    if (telaAtual !== "localizar" || !this.alvo) return;
+    const agora = performance.now();
+    if (this.ultimo && agora - this.ultimo > 800) { this.valor = Math.max(0, this.valor - 10); this.pintar(); }
+    if (this.ultimo && this.valor > 0 && agora - (this.ultimoBipe || 0) > 1000 - 9 * this.valor) {
+      this.ultimoBipe = agora;
+      try {
+        audio = audio || new AudioContext();
+        const o = audio.createOscillator(), g = audio.createGain();
+        o.frequency.value = 600 + 12 * this.valor; g.gain.value = 0.06;
+        o.connect(g).connect(audio.destination); o.start(); o.stop(audio.currentTime + 0.05);
+      } catch {}
+    }
+  },
+  sair() {
+    this.alvo = null; this.procurando = false;
+    try { app?.localizar(""); } catch {}
   },
 };
+window.proximidadeRfid = (v) => telas.localizar.proximidade(Number(v));
+setInterval(() => telas.localizar.tique(), 50);
 
 // ======================================================================= início
 (async () => {

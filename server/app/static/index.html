@@ -181,22 +181,13 @@
       <div>Mini WMS<small>RFID · FEFO · Endereçamento</small></div>
     </div>
     <nav id="menu">
-      <a href="#painel" data-pagina="painel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Painel</a>
-      <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Posição de estoque</a>
-      <div class="grupo">Operações</div>
-      <a href="#ordens" data-pagina="ordens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M12 11v6 M9 14l3 3 3-3"/></svg>Ordens de recebimento<span class="contador" id="cntRec"></span></a>
-      <a href="#recebimento" data-pagina="recebimento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12 M7 10l5 5 5-5 M4 21h16"/></svg>Entrada avulsa / doca<span class="contador" id="cntDoca"></span></a>
-      <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa de estoque</a>
-      <a href="#expedicao" data-pagina="expedicao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h11v10H3z M14 10h4l3 3v4h-7 M7 20a2 2 0 100-4 2 2 0 000 4z M17 20a2 2 0 100-4 2 2 0 000 4z"/></svg>Pedidos / Expedição<span class="contador" id="cntPedidos"></span></a>
-      <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
-      <a href="#movimentos" data-pagina="movimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Movimentos (kardex)</a>
-      <div class="grupo">Cadastros</div>
+      <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Estoque</a>
       <a href="#produtos" data-pagina="produtos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14 M7 5v14 M11 5v14 M14 5v14 M18 5v14 M20 5v14"/></svg>Produtos</a>
-      <a href="#enderecos" data-pagina="enderecos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11a7 7 0 1114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Endereços</a>
-      <div class="grupo">Ajuda</div>
-      <a href="/m" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M9 7h6 M9 11h6"/></svg>Tela do coletor (web)</a>
+      <a href="#ordens" data-pagina="ordens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M12 11v6 M9 14l3 3 3-3"/></svg>Ordens de recebimento<span class="contador" id="cntRec"></span></a>
+      <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
+      <a href="#movimentos" data-pagina="movimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Histórico</a>
+      <div class="grupo">Coletor</div>
       <a href="/coletor" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>Simulador do coletor</a>
-      <a href="/docs" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 9l-4 3 4 3 M16 9l4 3-4 3 M13 6l-2 12"/></svg>API (coletor)</a>
       <div class="grupo">Sistema</div>
       <a href="#" id="btLimparTudo" class="perigo-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3"/></svg>Limpar tudo</a>
     </nav>
@@ -238,23 +229,18 @@
       <!-- =================================================== ESTOQUE -->
       <section class="pagina" id="estoque" data-titulo="Posição de estoque" data-sub="Saldo por produto, lote e endereço, em ordem FEFO (vence primeiro, sai primeiro)">
         <div class="barra">
-          <input type="search" id="estBusca" placeholder="Buscar SKU, produto, lote ou endereço">
+          <input type="search" id="estBusca" placeholder="Buscar SKU, produto ou lote">
           <select id="estFiltro">
             <option value="">Todos os lotes</option>
-            <option value="vencidos">Vencidos</option>
             <option value="validade">Vencidos e a vencer (30 dias)</option>
-            <option value="bloqueados">Bloqueados</option>
-            <option value="doca">Na doca (a armazenar)</option>
-            <option value="reservados">Com reserva de pedido</option>
             <option value="minimo">Produtos abaixo do mínimo</option>
           </select>
           <label class="check"><input type="checkbox" id="estSemSaldo"> Mostrar produtos sem saldo</label>
           <div class="direita"><a class="botao" href="/api/estoque.csv">Exportar CSV</a></div>
         </div>
         <div class="tabela"><table>
-          <thead><tr><th>Lote</th><th>Validade</th><th>Endereço</th><th>Status</th><th class="num">Saldo</th><th class="num">Reservado</th><th class="num">Tags RFID</th><th class="num">Disponível*</th><th></th></tr></thead>
+          <thead><tr><th>Lote</th><th>Validade</th><th class="num">Saldo</th><th class="num">Com etiqueta RFID</th></tr></thead>
           <tbody id="tabEstoque"></tbody></table></div>
-        <p class="fraco">* Disponível para baixa por quantidade = saldo − reservado para pedidos − unidades com tag RFID (essas saem lendo a tag). Lotes bloqueados ou vencidos não entram no FEFO.</p>
       </section>
 
       <!-- =================================================== ORDENS DE RECEBIMENTO -->
@@ -274,7 +260,7 @@
                 <div class="campos">
                   <label class="campo largo"><span>Código de barras / SKU</span><input id="orCodigo" class="leitor" placeholder="Bipe e tecle Enter"></label>
                   <label class="campo largo"><span>Produto</span><select id="orProduto" data-produtos="ativos"></select></label>
-                  <label class="campo"><span>Lote</span><input id="orLote" style="text-transform:uppercase"></label>
+                  <label class="campo"><span>Lote (opcional)</span><input id="orLote" style="text-transform:uppercase"></label>
                   <label class="campo"><span>Validade</span><input id="orValidade" type="date"></label>
                   <label class="campo"><span>Quantidade</span><input id="orQtd" type="number" min="0" step="any"></label>
                 </div>
@@ -425,7 +411,7 @@
       </section>
 
       <!-- =================================================== INVENTÁRIO -->
-      <section class="pagina" id="inventario" data-titulo="Inventário" data-sub="Contagem física × sistema. Ao fechar, o saldo passa a ser o contado">
+      <section class="pagina" id="inventario" data-titulo="Inventário" data-sub="Etiquetas lidas no coletor × etiquetas em estoque. Ao fechar, o estoque passa a ser o que foi lido">
         <div class="card barra nao-imprimir">
           <form id="formNovoInv" class="barra" style="margin:0; flex:1" autocomplete="off">
             <input id="iNome" placeholder="Nome (ex.: Inventário geral setembro)" style="max-width:320px">
@@ -437,9 +423,9 @@
           <div class="kpis" id="iKpis"></div>
           <div class="grade g-form">
             <div class="card" id="iCardContagem">
-              <h2>Registrar contagem</h2>
-              <p class="ajuda">Contagens do mesmo lote são somadas (ex.: o lote está em dois lugares). No coletor, leia as tags RFID ou o código de barras dentro deste inventário.</p>
-              <form id="formContagem" autocomplete="off">
+              <h2>Contagem</h2>
+              <p class="ajuda">A contagem é feita no coletor: Inventário → escolha este inventário → aperte o gatilho e passe por todas as etiquetas. As leituras aparecem aqui na hora.</p>
+              <form id="formContagem" autocomplete="off" hidden>
                 <div class="campos">
                   <label class="campo largo"><span>Código de barras / SKU</span><input id="iCodigo" class="leitor" placeholder="Bipe e tecle Enter"></label>
                   <label class="campo largo"><span>Produto <b class="obrig">*</b></span><select id="iProduto" data-produtos="todos" required></select></label>
@@ -451,7 +437,7 @@
                   <button type="reset">Limpar</button>
                 </div>
               </form>
-              <div class="botoes" style="border-top:1px solid var(--borda); padding-top:14px">
+              <div class="botoes">
                 <button class="sucesso" id="iFechar" type="button">Fechar e ajustar estoque</button>
                 <button id="iCancelar" type="button">Cancelar inventário</button>
               </div>
@@ -462,7 +448,7 @@
                   <option value="">Todos os lotes</option><option value="dif">Só divergências</option><option value="nao">Não contados</option>
                 </select></span></div>
               <div class="tabela"><table>
-                <thead><tr><th>Endereço</th><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Sistema</th><th class="num">Contado</th><th class="num">Diferença</th></tr></thead>
+                <thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Em estoque</th><th class="num">Lidas</th><th class="num">Diferença</th></tr></thead>
                 <tbody id="tabConfronto"></tbody></table></div>
             </div>
           </div>
@@ -476,11 +462,11 @@
       </section>
 
       <!-- =================================================== MOVIMENTOS -->
-      <section class="pagina" id="movimentos" data-titulo="Movimentos (kardex)" data-sub="Tudo que aconteceu com cada lote, com o saldo depois de cada movimento">
+      <section class="pagina" id="movimentos" data-titulo="Histórico" data-sub="Tudo que aconteceu com cada lote, com o saldo depois de cada movimento">
         <form id="formFiltroMov" class="card barra" autocomplete="off">
           <input type="search" id="mBusca" placeholder="SKU, produto, lote, documento ou EPC" style="max-width:260px">
           <select id="mProduto" data-produtos="todos" data-vazio="Todos os produtos" style="max-width:240px"></select>
-          <select id="mTipo"><option value="">Todos os tipos</option><option>ENTRADA</option><option>BAIXA</option><option>AJUSTE</option><option>TRANSFERENCIA</option><option>BLOQUEIO</option><option>LIBERACAO</option></select>
+          <select id="mTipo"><option value="">Todos os tipos</option><option>ENTRADA</option><option>BAIXA</option><option>AJUSTE</option><option>ESTORNO</option></select>
           <label class="check">De <input type="date" id="mDe"></label>
           <label class="check">Até <input type="date" id="mAte"></label>
           <button class="primario" type="submit">Filtrar</button>
@@ -686,7 +672,7 @@ const seloStatus = (s) => ({ LIBERADO: '<span class="selo sucesso">Liberado</spa
   ABERTO: '<span class="selo info">Aberto</span>', SEPARANDO: '<span class="selo alerta">Em separação</span>',
   EXPEDIDO: '<span class="selo sucesso">Expedido</span>', CANCELADO: '<span class="selo">Cancelado</span>',
   FECHADO: '<span class="selo sucesso">Fechado</span>' }[s] || `<span class="selo">${esc(s)}</span>`);
-const seloTipo = (t) => `<span class="selo ${{ ENTRADA: "sucesso", BAIXA: "perigo", AJUSTE: "alerta", TRANSFERENCIA: "info", BLOQUEIO: "perigo" }[t] || ""}">${esc(t)}</span>`;
+const seloTipo = (t) => `<span class="selo ${{ ENTRADA: "sucesso", BAIXA: "perigo", AJUSTE: "alerta", ESTORNO: "info", TRANSFERENCIA: "info", BLOQUEIO: "perigo" }[t] || ""}">${esc(t)}</span>`;
 const qtdClasse = (q) => (q > 0 ? "pos" : q < 0 ? "neg" : "");
 
 // ======================================================================= cadastros em memória
@@ -741,7 +727,7 @@ const ajustarPasso = (input, produtoId) => {
 // ======================================================================= navegação
 let paginaAtual = "painel";
 function irPara(pagina) {
-  if (!$(pagina) || !$(pagina).classList.contains("pagina")) pagina = "painel";
+  if (!$(pagina) || !$(pagina).classList.contains("pagina")) pagina = "estoque";
   paginaAtual = pagina;
   document.querySelectorAll("section.pagina").forEach((s) => s.classList.toggle("ativo", s.id === pagina));
   document.querySelectorAll("#menu a[data-pagina]").forEach((a) => a.classList.toggle("ativo", a.dataset.pagina === pagina));
@@ -786,10 +772,9 @@ async function carregarPainel() {
   contadoresMenu(r);
 }
 function contadoresMenu(r) {
-  $("cntDoca").textContent = r.na_doca || "";
-  $("cntRec").textContent = r.recebimentos_abertos || "";
-  $("cntPedidos").textContent = r.pedidos_abertos || "";
-  $("cntInv").textContent = r.inventarios_abertos || "";
+  const contador = (id, v) => { if ($(id)) $(id).textContent = v || ""; };
+  contador("cntDoca", r.na_doca); contador("cntPedidos", r.pedidos_abertos);
+  contador("cntInv", r.inventarios_abertos); contador("cntRec", r.recebimentos_abertos);
 }
 const linhaMovCurta = (m) => `<tr>
   <td class="fraco">${dataHoraBR(m.data_hora)}</td><td>${seloTipo(m.tipo)}</td>
@@ -829,32 +814,21 @@ function desenharEstoque() {
     const produtoCasa = !busca || [g.p.sku, g.p.descricao].some((t) => t.toLowerCase().includes(busca));
     const mostrarVazio = semSaldo && !g.lotes.length && produtoCasa && (!filtro || (filtro === "minimo" && abaixo));
     if (!lotes.length && !mostrarVazio) continue;
-    html += `<tr class="grupo"><td colspan="4">${esc(g.p.sku)} · ${esc(g.p.descricao)}${g.p.ativo ? "" : ' <span class="selo">inativo</span>'}</td>
-      <td class="num">${num(g.total)} ${esc(g.p.unidade)}</td>
-      <td colspan="4">${g.p.estoque_min > 0 ? `<span class="${abaixo ? "selo perigo" : "fraco"}">mínimo ${num(g.p.estoque_min)}${abaixo ? " · repor" : ""}</span>` : ""}</td></tr>`;
-    if (!lotes.length) html += `<tr><td colspan="9" class="fraco" style="padding-left:24px">Sem saldo em estoque</td></tr>`;
+    html += `<tr class="grupo"><td colspan="2">${esc(g.p.sku)} · ${esc(g.p.descricao)}${g.p.ativo ? "" : ' <span class="selo">inativo</span>'}
+        ${g.p.estoque_min > 0 ? `<span class="${abaixo ? "selo perigo" : "fraco"}">mínimo ${num(g.p.estoque_min)}${abaixo ? " · repor" : ""}</span>` : ""}</td>
+      <td class="num">${num(g.total)} ${esc(g.p.unidade)}</td><td></td></tr>`;
+    if (!lotes.length) html += `<tr><td colspan="4" class="fraco" style="padding-left:24px">Sem saldo em estoque</td></tr>`;
     lotes.forEach((l) => {
       nLotes++;
       const disp = Math.max(l.quantidade - l.reservado - l.tags, 0);
       html += `<tr>
         <td style="padding-left:24px"><b>${esc(l.lote)}</b></td>
         <td>${seloValidade(l.validade, l.dias_para_vencer)}</td>
-        <td><span class="cod">${esc(l.endereco)}</span> ${l.tipo_endereco === "RECEBIMENTO" ? '<span class="selo alerta">armazenar</span>' : ""}</td>
-        <td>${seloStatus(l.status)}</td>
         <td class="num">${num(l.quantidade)}</td>
-        <td class="num">${l.reservado ? num(l.reservado) : ""}</td>
-        <td class="num">${l.tags ? num(l.tags) : ""}</td>
-        <td class="num"><b>${num(disp)}</b></td>
-        <td class="acoes">
-          <button class="pequeno" onclick="abrirTransferir(${l.lote_id})">Transferir</button>
-          ${l.status === "BLOQUEADO"
-            ? `<button class="pequeno" onclick="liberarLote(${l.lote_id}, this)">Liberar</button>`
-            : `<button class="pequeno" onclick="abrirBloquear(${l.lote_id})">Bloquear</button>`}
-          <button class="pequeno" onclick="abrirBaixaLote(${l.lote_id})">Baixar</button>
-        </td></tr>`;
+        <td class="num">${l.tags ? num(l.tags) : ""}</td></tr>`;
     });
   }
-  $("tabEstoque").innerHTML = html || vazio(9, filtro || busca ? "Nada encontrado com esse filtro" : "Estoque vazio. Comece cadastrando produtos e registrando um recebimento.");
+  $("tabEstoque").innerHTML = html || vazio(4, filtro || busca ? "Nada encontrado com esse filtro" : "Estoque vazio. Cadastre os produtos e crie uma ordem de recebimento.");
 }
 ["estBusca", "estFiltro", "estSemSaldo"].forEach((id) => $(id).addEventListener("input", desenharEstoque));
 
@@ -1008,10 +982,9 @@ $("orProduto").addEventListener("change", () => ajustarPasso($("orQtd"), $("orPr
 function adicionarItemOrdem() {
   const p = produtoPorId($("orProduto").value), qtd = Number($("orQtd").value), lote = $("orLote").value.trim().toUpperCase();
   if (!p) return toast("Escolha o produto do item", "erro");
-  if (!lote) return toast("Informe o lote do item", "erro");
   if (!(qtd > 0)) return toast("Informe a quantidade esperada", "erro");
-  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === lote)) return toast(`${p.sku} lote ${lote} já está na lista`, "erro");
-  itensNovaOrdem.push({ produto_id: p.id, lote, validade: $("orValidade").value || null, quantidade: qtd });
+  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || "SEM-LOTE"))) return toast(`${p.sku} lote ${lote} já está na lista`, "erro");
+  itensNovaOrdem.push({ produto_id: p.id, lote: lote || "SEM-LOTE", validade: $("orValidade").value || null, quantidade: qtd });
   ["orCodigo", "orProduto", "orLote", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
   desenharItensOrdem();
   $("orCodigo").focus();
@@ -1322,9 +1295,9 @@ async function carregarInventario() {
   const f = $("iFiltro").value;
   const linhas = d.confronto.filter((c) => (f === "dif" ? c.diferenca !== 0 : f === "nao" ? !c.foi_contado : true));
   $("tabConfronto").innerHTML = linhas.map((c) => `<tr>
-    <td><span class="cod">${esc(c.endereco)}</span></td><td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td><td>${dataBR(c.validade)}</td>
+    <td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td><td>${dataBR(c.validade)}</td>
     <td class="num">${num(c.sistema)}</td><td class="num">${c.foi_contado ? num(c.contado) : '<span class="fraco">não contado</span>'}</td>
-    <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(7, "Nada para mostrar");
+    <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(6, "Nada para mostrar");
   $("tabContagens").innerHTML = d.contagens.map((c) => `<tr>
     <td>${dataHoraBR(c.data_hora)}</td><td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td>
     <td class="num">${num(c.quantidade)}</td><td class="mono">${esc(c.epc)}</td><td>${esc(c.origem)}</td><td>${esc(c.meio)}</td>
@@ -1336,10 +1309,10 @@ async function removerContagem(id, botao) {
 }
 $("iFechar").addEventListener("click", async (ev) => {
   const botao = ev.currentTarget;
-  if (!(await confirmar("Fechar inventário", "O saldo do sistema será ajustado para o que foi contado.\nLotes NÃO contados ficarão com saldo ZERO.\n\nIsso não pode ser desfeito.", "Fechar e ajustar"))) return;
+  if (!(await confirmar("Fechar inventário", "O estoque passa a ser o que foi lido no coletor:\netiquetas em estoque que NÃO foram lidas saem, e etiquetas achadas voltam.\n\nIsso não pode ser desfeito.", "Fechar e ajustar"))) return;
   await executar(botao, async () => {
     const r = await api("POST", `/api/inventarios/${inventarioAtual}/fechar`);
-    toast(`Inventário fechado: ${r.ajustes} lote(s) ajustado(s)`);
+    toast(r.faltas !== undefined ? `Inventário fechado: ${r.faltas} falta(s) e ${r.sobras} sobra(s) ajustadas` : `Inventário fechado: ${r.ajustes} lote(s) ajustado(s)`);
     await carregarInventarios(); await carregarInventario();
   });
 });
@@ -1512,7 +1485,7 @@ async function iniciar() {
   $("orEndereco").value = enderecoDoca();
   desenharItensPedido();
   desenharItensOrdem();
-  irPara(location.hash.slice(1) || "painel");
+  irPara(location.hash.slice(1) || "estoque");
   relogio();
   setInterval(() => atualizar(false), 5000);
   setInterval(relogio, 15000);

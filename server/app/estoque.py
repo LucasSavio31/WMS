@@ -306,6 +306,16 @@ def baixa_tag(con, epc, motivo, origem="COLETOR", documento=None):
     return {"epc": t["epc"], "sku": t["sku"], "lote": t["lote"], "avisos": avisos}
 
 
+def estornar_baixa_tag(con, epc, origem="COLETOR"):
+    """Desfaz a baixa de uma etiqueta (lida por engano): ela volta para o estoque."""
+    t = buscar_tag(con, epc)
+    if t["status"] == "ATIVA":
+        raise ErroEstoque(f"Tag {t['epc']} já está em estoque")
+    con.execute("UPDATE tags SET status='ATIVA' WHERE epc=?", (t["epc"],))
+    movimentar(con, "ESTORNO", t["lote_id"], 1, origem, "RFID", "Estorno de baixa", t["epc"])
+    return {"epc": t["epc"], "sku": t["sku"], "lote": t["lote"]}
+
+
 # ----------------------------------------------------------------- armazenagem
 def transferir(con, lote_id, endereco_id, origem="PC", meio="MANUAL"):
     """Muda o lote inteiro de endereço (ex.: da doca de recebimento para a prateleira)."""
@@ -379,8 +389,28 @@ def contar_quantidade(con, inventario_id, lote_id, quantidade, origem="PC", meio
     return {"lote": l["lote"], "quantidade": quantidade}
 
 
+def so_rfid(con, inventario_id):
+    """Inventário feito só lendo etiquetas (sem contagem por quantidade)."""
+    return not con.execute("SELECT 1 FROM contagens WHERE inventario_id=? AND epc IS NULL",
+                           (inventario_id,)).fetchone()
+
+
 def confrontar(con, inventario_id):
-    """Compara o contado (físico) com o saldo do sistema, lote a lote."""
+    """Compara o contado (físico) com o sistema, lote a lote.
+
+    Inventário por RFID: sistema = etiquetas em estoque do lote; contado =
+    etiquetas lidas. Unidades sem etiqueta não entram na conta.
+    """
+    if so_rfid(con, inventario_id):
+        return db.linhas(con.execute(
+            """SELECT *, contado - sistema AS diferenca, contado > 0 AS foi_contado FROM (
+                 SELECT l.id AS lote_id, p.sku, p.descricao, l.lote, l.validade, e.codigo AS endereco,
+                        (SELECT COUNT(*) FROM tags t WHERE t.lote_id=l.id AND t.status='ATIVA') AS sistema,
+                        (SELECT COUNT(*) FROM contagens c WHERE c.inventario_id=? AND c.lote_id=l.id) AS contado
+                 FROM lotes l JOIN produtos p ON p.id = l.produto_id
+                 LEFT JOIN enderecos e ON e.id = l.endereco_id)
+               WHERE sistema > 0 OR contado > 0
+               ORDER BY sku, validade""", (inventario_id,)))
     return db.linhas(con.execute(
         """SELECT l.id AS lote_id, p.sku, p.descricao, l.lote, l.validade, e.codigo AS endereco,
                   l.quantidade AS sistema,
@@ -399,6 +429,8 @@ def confrontar(con, inventario_id):
 def fechar_inventario(con, inventario_id, origem="PC"):
     """Aplica as diferenças: o saldo do sistema passa a ser o que foi contado."""
     inventario_aberto(con, inventario_id)
+    if so_rfid(con, inventario_id):
+        return fechar_inventario_rfid(con, inventario_id, origem)
     ajustes = 0
     for item in confrontar(con, inventario_id):
         if item["diferenca"] != 0:
@@ -412,6 +444,32 @@ def fechar_inventario(con, inventario_id, origem="PC"):
                 (inventario_id,))
     con.execute("UPDATE inventarios SET status='FECHADO', fechado_em=? WHERE id=?", (db.agora(), inventario_id))
     return {"ajustes": ajustes}
+
+
+def fechar_inventario_rfid(con, inventario_id, origem="PC"):
+    """Etiqueta em estoque que não foi lida sai (falta); etiqueta baixada que foi lida volta (sobra)."""
+    documento = f"INV-{inventario_id}"
+    faltas = db.linhas(con.execute(
+        """SELECT lote_id, COUNT(*) AS n FROM tags WHERE status='ATIVA'
+           AND epc NOT IN (SELECT epc FROM contagens WHERE inventario_id=? AND epc IS NOT NULL)
+           GROUP BY lote_id""", (inventario_id,)))
+    sobras = db.linhas(con.execute(
+        """SELECT t.lote_id, COUNT(*) AS n FROM tags t
+           JOIN contagens c ON c.epc=t.epc AND c.inventario_id=?
+           WHERE t.status <> 'ATIVA' GROUP BY t.lote_id""", (inventario_id,)))
+    con.execute("""UPDATE tags SET status='BAIXADA' WHERE status='ATIVA'
+                   AND epc NOT IN (SELECT epc FROM contagens WHERE inventario_id=? AND epc IS NOT NULL)""",
+                (inventario_id,))
+    con.execute("""UPDATE tags SET status='ATIVA'
+                   WHERE epc IN (SELECT epc FROM contagens WHERE inventario_id=? AND epc IS NOT NULL)""",
+                (inventario_id,))
+    for f in faltas:
+        movimentar(con, "AJUSTE", f["lote_id"], -f["n"], origem, "RFID", "Falta no inventário", documento=documento)
+    for s_ in sobras:
+        movimentar(con, "AJUSTE", s_["lote_id"], s_["n"], origem, "RFID", "Sobra no inventário", documento=documento)
+    con.execute("UPDATE inventarios SET status='FECHADO', fechado_em=? WHERE id=?", (db.agora(), inventario_id))
+    return {"ajustes": len(faltas) + len(sobras),
+            "faltas": sum(f["n"] for f in faltas), "sobras": sum(x["n"] for x in sobras)}
 
 
 def cancelar_inventario(con, inventario_id):
@@ -506,9 +564,7 @@ def criar_recebimento(con, itens, documento=None, fornecedor=None, endereco_id=N
     linhas = []
     for item in itens:
         p = produto_ativo(con, item.get("produto_id"), item.get("codigo"))
-        lote = (item.get("lote") or "").strip().upper()
-        if not lote:
-            raise ErroEstoque(f"Informe o lote de {p['sku']}")
+        lote = (item.get("lote") or "").strip().upper() or "SEM-LOTE"
         validar_quantidade(p, item.get("quantidade"))
         if any(l[0] == p["id"] and l[1] == lote for l in linhas):
             raise ErroEstoque(f"{p['sku']} lote {lote} repetido no recebimento")
