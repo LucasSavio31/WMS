@@ -164,9 +164,10 @@ object Rfid : RfidEventsListener {
             r.Config.Antennas.setAntennaRfConfig(1, config)
             potenciaNoLeitor = 100
 
-            // Sessão S1, estado A, todas as tags
+            // Sessão S0: toda etiqueta responde a cada rodada (na S1 a etiqueta já lida fica
+            // alguns segundos "calada"; boa para milhares de tags, ruim para contar poucas dezenas)
             val singulacao = r.Config.Antennas.getSingulationControl(1)
-            singulacao.setSession(SESSION.SESSION_S1)
+            singulacao.setSession(SESSION.SESSION_S0)
             singulacao.Action.setInventoryState(INVENTORY_STATE.INVENTORY_STATE_A)
             singulacao.Action.setSLFlag(SL_FLAG.SL_ALL)
             r.Config.Antennas.setSingulationControl(1, singulacao)

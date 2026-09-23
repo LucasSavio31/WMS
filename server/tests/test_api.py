@@ -334,5 +334,10 @@ def test_inventario_por_rfid_e_estorno(api):
     assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
     r = api.post(f"/api/inventarios/{inv}/fechar").json()
     assert (r["faltas"], r["sobras"]) == (1, 1)
+    # fechado: continua mostrando o que foi lido na hora (não o estoque de agora)
+    api.post("/api/baixas", json={"epcs": ["T1"]})
+    conf = {c["lote"]: c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"]}
+    assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
+    api.post("/api/tags/T1/estornar")
     assert api.get("/api/tags/T4").json()["status"] == "BAIXADA" and api.get("/api/tags/T3").json()["status"] == "ATIVA"
     assert saldo(api, "SEM-LOTE") == 3 and saldo(api, "CX") == 5

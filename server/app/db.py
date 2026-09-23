@@ -88,6 +88,16 @@ CREATE TABLE IF NOT EXISTS contagens (
     UNIQUE (inventario_id, epc)           -- a mesma tag só conta uma vez
 );
 
+-- Resultado guardado quando o inventário é fechado (o estoque muda depois;
+-- sem isso, um inventário antigo mostraria os números de hoje).
+CREATE TABLE IF NOT EXISTS inventario_resultado (
+    inventario_id INTEGER NOT NULL REFERENCES inventarios(id),
+    lote_id       INTEGER NOT NULL REFERENCES lotes(id),
+    sistema       REAL NOT NULL,          -- em estoque na hora de fechar
+    contado       REAL NOT NULL,          -- lido/contado
+    PRIMARY KEY (inventario_id, lote_id)
+);
+
 -- Pedidos de expedição (saída para cliente)
 CREATE TABLE IF NOT EXISTS pedidos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

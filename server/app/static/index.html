@@ -412,7 +412,7 @@
         </div>
         <div id="iDetalhe" style="display:none">
           <div class="kpis" id="iKpis"></div>
-          <div class="grade g-form">
+          <div class="grade">
             <div class="card" id="iCardContagem">
               <h2>Contagem</h2>
               <p class="ajuda">A contagem é feita no coletor: Inventário → escolha este inventário → aperte o gatilho e passe por todas as etiquetas. As leituras aparecem aqui na hora.</p>
@@ -439,7 +439,7 @@
                   <option value="">Todos os lotes</option><option value="dif">Só divergências</option><option value="nao">Não contados</option>
                 </select></span></div>
               <div class="tabela"><table>
-                <thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Em estoque</th><th class="num">Lidas</th><th class="num">Diferença</th></tr></thead>
+                <thead><tr><th>Produto</th><th class="num">Em estoque</th><th class="num">Lidas</th><th class="num">Diferença</th></tr></thead>
                 <tbody id="tabConfronto"></tbody></table></div>
             </div>
           </div>
@@ -1271,20 +1271,24 @@ async function carregarInventario() {
   const inv = d.inventario, aberto = inv.status === "ABERTO";
   const contados = d.confronto.filter((c) => c.foi_contado);
   const divergentes = d.confronto.filter((c) => c.diferenca !== 0);
-  const acuracidade = d.confronto.length ? Math.round(100 * (d.confronto.length - divergentes.length) / d.confronto.length) : 100;
+  // Acuracidade por unidade: o que bate ÷ o maior entre sistema e contado (18 lidas de 20 = 90%)
+  const bate = d.confronto.reduce((s, c) => s + Math.min(c.sistema, c.contado), 0);
+  const base = d.confronto.reduce((s, c) => s + Math.max(c.sistema, c.contado), 0);
+  const acuracidade = base ? Math.round((100 * bate) / base) : 100;
+  const totSistema = d.confronto.reduce((s, c) => s + c.sistema, 0), totContado = d.confronto.reduce((s, c) => s + c.contado, 0);
   $("iKpis").innerHTML = `
     <div class="kpi"><div class="rotulo">#${inv.id} ${esc(inv.nome)}</div><div class="valor" style="font-size:18px">${seloStatus(inv.status)}</div><div class="fraco">aberto ${dataHoraBR(inv.aberto_em)}${inv.fechado_em ? "<br>encerrado " + dataHoraBR(inv.fechado_em) : ""}</div></div>
-    <div class="kpi"><div class="rotulo">Lotes no confronto</div><div class="valor">${d.confronto.length}</div></div>
-    <div class="kpi ${contados.length < d.confronto.length ? "alerta" : "sucesso"}"><div class="rotulo">Lotes contados</div><div class="valor">${contados.length}</div></div>
-    <div class="kpi ${divergentes.length ? "perigo" : "sucesso"}"><div class="rotulo">Com divergência</div><div class="valor">${divergentes.length}</div></div>
-    <div class="kpi"><div class="rotulo">Acuracidade</div><div class="valor">${acuracidade}%</div></div>`;
+    <div class="kpi"><div class="rotulo">Em estoque${aberto ? "" : " (na hora)"}</div><div class="valor">${num(totSistema)}</div></div>
+    <div class="kpi ${totContado === totSistema ? "sucesso" : "alerta"}"><div class="rotulo">Lidas</div><div class="valor">${num(totContado)}</div></div>
+    <div class="kpi ${totContado === totSistema ? "sucesso" : "perigo"}"><div class="rotulo">Diferença</div><div class="valor">${sinal(totContado - totSistema)}</div></div>
+    <div class="kpi ${acuracidade === 100 ? "sucesso" : acuracidade >= 90 ? "alerta" : "perigo"}"><div class="rotulo">Acuracidade</div><div class="valor">${acuracidade}%</div></div>`;
   $("iCardContagem").style.display = aberto ? "" : "none";
   const f = $("iFiltro").value;
   const linhas = d.confronto.filter((c) => (f === "dif" ? c.diferenca !== 0 : f === "nao" ? !c.foi_contado : true));
   $("tabConfronto").innerHTML = linhas.map((c) => `<tr>
-    <td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td><td>${dataBR(c.validade)}</td>
+    <td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span>${c.lote !== "SEM-LOTE" ? ` <span class="fraco">· lote ${esc(c.lote)}</span>` : ""}</td>
     <td class="num">${num(c.sistema)}</td><td class="num">${c.foi_contado ? num(c.contado) : '<span class="fraco">não contado</span>'}</td>
-    <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(6, "Nada para mostrar");
+    <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(4, "Nada para mostrar");
   $("tabContagens").innerHTML = d.contagens.map((c) => `<tr>
     <td>${dataHoraBR(c.data_hora)}</td><td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td>
     <td class="num">${num(c.quantidade)}</td><td class="mono">${esc(c.epc)}</td><td>${esc(c.origem)}</td><td>${esc(c.meio)}</td>

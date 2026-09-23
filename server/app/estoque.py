@@ -138,6 +138,7 @@ def excluir_produto(con, produto_id):
     args = (produto_id,)
     con.execute(f"DELETE FROM reservas WHERE lote_id IN ({lotes}) OR item_id IN ({itens})", args * 2)
     con.execute(f"DELETE FROM contagens WHERE lote_id IN ({lotes})", args)
+    con.execute(f"DELETE FROM inventario_resultado WHERE lote_id IN ({lotes})", args)
     con.execute(f"DELETE FROM movimentos WHERE lote_id IN ({lotes})", args)
     con.execute(f"DELETE FROM tags WHERE lote_id IN ({lotes})", args)
     n_lotes = con.execute("DELETE FROM lotes WHERE produto_id=?", args).rowcount
@@ -157,7 +158,7 @@ def limpar_tudo(con, manter_cadastros=False):
 
     Com manter_cadastros, apaga só a movimentação e deixa produtos e endereços.
     """
-    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventarios", "recebimento_leituras",
+    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventario_resultado", "inventarios", "recebimento_leituras",
                "recebimento_itens", "recebimentos", "movimentos", "tags", "lotes"]
     if not manter_cadastros:
         tabelas += ["produtos", "enderecos"]
@@ -401,6 +402,14 @@ def confrontar(con, inventario_id):
     Inventário por RFID: sistema = etiquetas em estoque do lote; contado =
     etiquetas lidas. Unidades sem etiqueta não entram na conta.
     """
+    guardado = db.linhas(con.execute(
+        """SELECT r.lote_id, p.sku, p.descricao, l.lote, l.validade, e.codigo AS endereco,
+                  r.sistema, r.contado, r.contado - r.sistema AS diferenca, r.contado > 0 AS foi_contado
+           FROM inventario_resultado r JOIN lotes l ON l.id=r.lote_id JOIN produtos p ON p.id=l.produto_id
+           LEFT JOIN enderecos e ON e.id=l.endereco_id
+           WHERE r.inventario_id=? ORDER BY p.sku, l.validade""", (inventario_id,)))
+    if guardado:
+        return guardado   # inventário fechado: mostra o que foi lido naquele momento
     if so_rfid(con, inventario_id):
         return db.linhas(con.execute(
             """SELECT *, contado - sistema AS diferenca, contado > 0 AS foi_contado FROM (
@@ -426,9 +435,16 @@ def confrontar(con, inventario_id):
            ORDER BY e.codigo, p.sku, l.validade""", (inventario_id,)))
 
 
+def guardar_resultado(con, inventario_id):
+    for c in confrontar(con, inventario_id):
+        con.execute("INSERT OR REPLACE INTO inventario_resultado (inventario_id, lote_id, sistema, contado) VALUES (?,?,?,?)",
+                    (inventario_id, c["lote_id"], c["sistema"], c["contado"]))
+
+
 def fechar_inventario(con, inventario_id, origem="PC"):
     """Aplica as diferenças: o saldo do sistema passa a ser o que foi contado."""
     inventario_aberto(con, inventario_id)
+    guardar_resultado(con, inventario_id)
     if so_rfid(con, inventario_id):
         return fechar_inventario_rfid(con, inventario_id, origem)
     ajustes = 0
