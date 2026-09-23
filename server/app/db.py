@@ -1,9 +1,37 @@
 """Banco de dados SQLite do mini WMS (arquivo estoque.db ao lado do servidor)."""
 import os
+import socket
 import sqlite3
+import sys
 from datetime import datetime
 
-DB_PATH = os.environ.get("WMS_DB", os.path.join(os.path.dirname(__file__), "..", "estoque.db"))
+
+def pasta_documentos() -> str:
+    """Pasta "Documentos" do usuário (no Windows, mesmo se estiver no OneDrive)."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            caminho = ctypes.create_unicode_buffer(260)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, caminho) == 0:   # 5 = CSIDL_PERSONAL
+                return caminho.value
+        except Exception:  # noqa: BLE001
+            pass
+    return os.path.join(os.path.expanduser("~"), "Documents")
+
+
+# O banco fica sempre em Documentos\MiniWMS\estoque.db do usuário (WMS_DB troca o caminho).
+DB_PADRAO = os.path.join(pasta_documentos(), "MiniWMS", "estoque.db")
+DB_PATH = os.environ.get("WMS_DB") or DB_PADRAO
+
+# Se o Windows bloquear Documentos (Proteção contra ransomware / Acesso controlado a pastas),
+# o banco vai para esta pasta e o AVISO explica como liberar.
+DB_RESERVA = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "MiniWMS", "estoque.db")
+AVISO = None
+
+# Onde o banco ficava antes (ao lado do servidor ou do .exe): copiado na primeira vez
+LOCAIS_ANTIGOS = [os.path.join(os.path.dirname(__file__), "..", "estoque.db")]
+if getattr(sys, "frozen", False):
+    LOCAIS_ANTIGOS.append(os.path.join(os.path.dirname(sys.executable), "estoque.db"))
 
 # Endereço criado automaticamente: toda mercadoria recebida chega aqui
 # e depois é armazenada (transferida) para um endereço de estoque.
@@ -212,7 +240,66 @@ def conectar() -> sqlite3.Connection:
     return con
 
 
+def pode_gravar(pasta: str) -> bool:
+    try:
+        os.makedirs(pasta, exist_ok=True)
+        teste = os.path.join(pasta, ".teste-gravacao")
+        with open(teste, "w") as f:
+            f.write("ok")
+        os.remove(teste)
+        return True
+    except OSError:
+        return False
+
+
+def escolher_pasta() -> None:
+    """Documentos/MiniWMS; se o Windows bloquear, usa a pasta reserva e avisa."""
+    global DB_PATH, AVISO
+    if DB_PATH != DB_PADRAO or pode_gravar(os.path.dirname(DB_PATH)):
+        return
+    if os.path.exists(DB_PADRAO):          # banco já está em Documentos, mas agora não dá para gravar
+        AVISO = ("O Windows está bloqueando a pasta Documentos (Proteção contra ransomware). "
+                 "Libere o WMS-Servidor.exe em: Segurança do Windows > Proteção contra vírus e ameaças > "
+                 "Proteção contra ransomware > Permitir um aplicativo pelo Acesso controlado a pastas.")
+        raise RuntimeError(AVISO)
+    DB_PATH = DB_RESERVA
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    AVISO = (f"O Windows bloqueou a pasta Documentos (Proteção contra ransomware). O banco ficou em {DB_PATH}. "
+             "Para usar Documentos, libere o WMS-Servidor.exe em: Segurança do Windows > Proteção contra vírus "
+             "e ameaças > Proteção contra ransomware > Permitir um aplicativo pelo Acesso controlado a pastas "
+             "(o banco é copiado para lá na próxima vez que abrir).")
+
+
+def trazer_banco_antigo() -> None:
+    if DB_PATH not in (DB_PADRAO, DB_RESERVA) or os.path.exists(DB_PATH):
+        return
+    if DB_PATH == DB_PADRAO and os.path.exists(DB_RESERVA):
+        LOCAIS_ANTIGOS.insert(0, DB_RESERVA)   # estava na reserva: agora Documentos foi liberado
+    for antigo in LOCAIS_ANTIGOS:
+        if os.path.exists(antigo):
+            origem = sqlite3.connect(antigo)          # backup do SQLite: copia certo mesmo com WAL
+            destino = sqlite3.connect(DB_PATH)
+            origem.backup(destino)
+            destino.close(); origem.close()
+            return
+
+
+def ip_da_rede() -> str:
+    """IP deste PC na rede local (é o endereço que o coletor usa)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
 def inicializar() -> None:
+    escolher_pasta()
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    trazer_banco_antigo()
     with conectar() as con:
         con.execute("PRAGMA journal_mode = WAL")  # leituras não travam gravações
         con.executescript(SCHEMA)

@@ -22,8 +22,8 @@ Na página **Releases** do repositório (lado direito, "Releases" → última ve
 
 | Arquivo | Onde | Como usar |
 |---|---|---|
-| `WMS-Servidor.exe` | PC com Windows (qualquer um, sem instalar nada) | Crie uma pasta (ex.: `C:\WMS`), coloque o `.exe` nela e dê dois cliques. Já vem com tudo (Python, servidor, telas do PC e do coletor). O navegador abre sozinho em http://localhost:8000 e a janela mostra o **endereço para o coletor**. O banco `estoque.db` é criado na mesma pasta: para fazer backup, copie esse arquivo. Para desligar, feche a janela. |
-| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app pergunta o endereço do servidor: digite o que aparece na janela do servidor ("Endereço no coletor"). Depois configure o DataWedge (seção 2). |
+| `WMS-Servidor.exe` | PC com Windows (qualquer um, sem instalar nada) | Crie uma pasta (ex.: `C:\WMS`), coloque o `.exe` nela e dê dois cliques. Já vem com tudo (Python, servidor, telas do PC e do coletor). O navegador abre sozinho em http://localhost:8000 e a janela mostra o **endereço para o coletor**. O banco fica em **Documentos\MiniWMS\estoque.db** do usuário: para fazer backup, copie esse arquivo. Se a Proteção contra ransomware do Windows bloquear Documentos, o banco vai para `AppData\Local\MiniWMS` e a janela explica como liberar (Segurança do Windows > Proteção contra vírus e ameaças > Proteção contra ransomware > Permitir um aplicativo). Para desligar, feche a janela. |
+| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app **procura o servidor na rede Wi-Fi sozinho**; se não achar, digite o endereço que aparece no topo da tela do PC ("📱 Coletor"). O ⚙ tem "Procurar na rede". Depois configure o DataWedge (seção 2). |
 
 - Porta: o servidor usa a 8000. Se ela estiver ocupada, a janela avisa. Para usar outra, abra um Prompt na pasta e rode
   `set WMS_PORTA=8080` e depois `WMS-Servidor.exe` (no coletor, use o endereço com a porta nova).
@@ -77,10 +77,6 @@ Para só parar de usar, desmarque *Ativo*.
 **Limpar tudo** (menu lateral, grupo *Sistema*): zera o banco para recomeçar uma aula. Opcionalmente mantém
 o cadastro de produtos e endereços e apaga só a movimentação.
 
-**Simulador do coletor**: http://localhost:8000/coletor mostra o app do coletor no navegador (as mesmas telas /m).
-O gatilho é simulado por um botão (ou a tecla F8), com etiquetas RFID e códigos de barras "na frente do leitor"
-num painel ao lado.
-
 ---|---|---|
 | Cadastro de produtos (SKU, descrição, EAN, mínimo) | ✔ | — |
 | Posição de estoque por produto e lote, com validade | ✔ | Consulta |
@@ -126,7 +122,6 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
 | `server/app/static/m.html` | Telas do coletor (abre em `/m`; dentro do app ou no Chrome) |
-| `server/app/static/coletor.html` | Simulador do app do coletor no PC (abre em `/coletor`) |
 | `server/wms_servidor.py` | Inicia o servidor e abre o navegador (vira o `WMS-Servidor.exe`) |
 
 ---
@@ -169,9 +164,7 @@ O DataWedge fica só com o **código de barras**; o RFID é do app. Os nomes pod
 
 ### Testar sem o coletor
 
-- **http://localhost:8000/coletor**: simulador do app. A tela /m roda dentro do desenho do aparelho, e um
-  painel ao lado faz o papel do gatilho (etiquetas RFID "ao alcance da antena" e códigos de barras).
-- **http://localhost:8000/m** no navegador: digite o código ou o EPC no campo *Leitura* e tecle Enter.
+Abra **http://localhost:8000/m** no navegador e digite o código ou o EPC no campo *Leitura* + Enter.
 
 ## 3. Alternativa: só o Chrome, sem app
 

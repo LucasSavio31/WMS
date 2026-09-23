@@ -245,7 +245,9 @@ def test_lista_tags_e_paginas(api):
     assert [t["epc"] for t in api.get("/api/tags", params={"status": "ATIVA"}).json()] == ["T2"]
     assert len(api.get("/api/tags").json()) == 2
     assert "DataWedge" in api.get("/m").text
-    assert "Simulador" in api.get("/coletor").text and "Mini WMS" in api.get("/").text
+    assert api.get("/coletor").status_code == 404 and "Mini WMS" in api.get("/").text
+    st = api.get("/api/status").json()
+    assert st["servidor"] == "Mini WMS" and st["coletor"].startswith("http://")
 
 
 def test_limpar_tudo(api):

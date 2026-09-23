@@ -9,27 +9,14 @@ import sys
 import threading
 import webbrowser
 
-# O banco estoque.db fica na mesma pasta do .exe (ou deste arquivo)
-pasta = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
-os.environ.setdefault("WMS_DB", os.path.join(pasta, "estoque.db"))
+import uvicorn
 
-import uvicorn  # noqa: E402
+from app import db
+from app.main import app
 
-from app.main import app  # noqa: E402
+# O banco fica em Documentos\MiniWMS\estoque.db do usuário (ver app/db.py).
 
 PORTA = int(os.environ.get("WMS_PORTA", "8000"))   # outra porta: set WMS_PORTA=8080 antes de abrir
-
-
-def ip_da_rede() -> str:
-    """IP deste PC na rede local (é o que vai no coletor)."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("10.255.255.255", 1))
-        return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        s.close()
 
 
 def porta_livre(porta: int) -> bool:
@@ -53,13 +40,21 @@ def sair(mensagem: str) -> None:
 
 if __name__ == "__main__":
     sys.stdout.reconfigure(line_buffering=True)  # mostra o texto na hora
-    ip = ip_da_rede()
+    ip = db.ip_da_rede()
     print("=" * 64)
     print(" MINI WMS - SERVIDOR")
     print(f" Tela do PC ...........: http://localhost:{PORTA}")
     print(f" Endereço no coletor ..: http://{ip}:{PORTA}")
-    print(f" Simulador do coletor .: http://localhost:{PORTA}/coletor")
-    print(f" Banco de dados .......: {os.environ['WMS_DB']}")
+    try:
+        db.inicializar()   # escolhe a pasta do banco (Documentos) antes de mostrar o caminho
+    except Exception as e:  # noqa: BLE001
+        sair(f"Não foi possível abrir o banco de dados: {e}")
+    print(f" Banco de dados .......: {db.DB_PATH}")
+    if db.AVISO:
+        print()
+        print(" ATENÇÃO: " + db.AVISO)
+        print()
+    print(" (o coletor também acha o servidor sozinho: Procurar servidor na rede)")
     print(" Para desligar, feche esta janela.")
     print("=" * 64)
     if not porta_livre(PORTA):

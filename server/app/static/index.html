@@ -48,6 +48,9 @@
   .topo h1 { font-size: 19px; margin: 0; }
   .topo .sub { color: var(--texto-2); font-size: 13px; }
   .topo .direita { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--texto-2); font-size: 13px; }
+  .endereco-coletor { background: var(--fundo-info); color: var(--texto); border-radius: 8px; padding: 4px 10px; font-size: 13px; white-space: nowrap; }
+  .endereco-coletor b { font-family: Consolas, monospace; }
+  .endereco-coletor:empty { display: none; }
   .ponto { width: 9px; height: 9px; border-radius: 50%; background: var(--sucesso); display: inline-block; }
   .ponto.off { background: var(--perigo); }
   #menuBotao { display: none; }
@@ -189,8 +192,6 @@
       <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa</a>
       <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
       <a href="#movimentos" data-pagina="movimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Histórico</a>
-      <div class="grupo">Coletor</div>
-      <a href="/coletor" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M10 18h4"/></svg>Simulador do coletor</a>
       <div class="grupo">Sistema</div>
       <a href="#" id="btLimparTudo" class="perigo-menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3"/></svg>Limpar tudo</a>
     </nav>
@@ -200,7 +201,8 @@
     <div class="topo">
       <button id="menuBotao" class="pequeno" aria-label="Abrir menu">☰</button>
       <div><h1 id="tituloPagina">Painel</h1><div class="sub" id="subtituloPagina"></div></div>
-      <div class="direita"><span class="ponto" id="pontoConexao"></span><span id="relogio">conectando…</span></div>
+      <div class="direita"><span id="enderecoColetor" class="endereco-coletor" title="Digite este endereço no app do coletor (ou use Procurar servidor na rede)"></span>
+        <span class="ponto" id="pontoConexao"></span><span id="relogio">conectando…</span></div>
     </div>
 
     <main>
@@ -230,7 +232,7 @@
       </section>
 
       <!-- =================================================== ESTOQUE -->
-      <section class="pagina" id="estoque" data-titulo="Posição de estoque" data-sub="Saldo por produto, lote e endereço, em ordem FEFO (vence primeiro, sai primeiro)">
+      <section class="pagina" id="estoque" data-titulo="Posição de estoque" data-sub="">
         <div class="barra">
           <input type="search" id="estBusca" placeholder="Buscar SKU, produto ou lote">
           <select id="estFiltro">
@@ -1486,10 +1488,13 @@ async function atualizar(forcar) {
   try { await carregadores[paginaAtual]?.(); }
   catch (e) { if (forcar) toast(e.message, "erro"); }
 }
+let avisoBancoMostrado = false;
 async function relogio() {
   try {
     const s = await api("GET", "/api/status");
     $("relogio").textContent = "Servidor " + dataHoraBR(s.data_hora).slice(0, 16);
+    if (s.coletor) $("enderecoColetor").innerHTML = `📱 Coletor: <b>${esc(s.coletor)}</b>`;
+    if (s.aviso && !avisoBancoMostrado) { avisoBancoMostrado = true; toast(s.aviso, "alerta", 20000); }
     if (paginaAtual !== "painel") contadoresMenu(await api("GET", "/api/resumo"));
   } catch { /* conexao() já mostra o aviso */ }
 }

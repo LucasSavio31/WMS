@@ -60,6 +60,7 @@
   body { background: var(--bg); color: var(--texto); font: 15px/1.35 Roboto, "Segoe UI", system-ui, Arial, sans-serif; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto; }
 
   header { background: var(--topo); color: #fff; display: flex; align-items: center; gap: 6px; padding: 0 6px; height: 50px; flex: none; }
+  header .logo-senai { height: 26px; width: auto; border-radius: 3px; flex: none; }
   header h1 { font-size: 18px; margin: 0; flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   header button { background: none; border: none; color: #fff; font-size: 22px; width: 42px; height: 42px; border-radius: 50%; }
   header button:active { background: #ffffff22; }
@@ -175,6 +176,7 @@
 </div>
 <header>
   <button id="voltar" aria-label="Voltar" style="visibility:hidden">←</button>
+  <img src="/static/senai.png" alt="SENAI" class="logo-senai">
   <h1 id="titulo">WMS Coletor</h1>
   <button id="btTelaCheia" aria-label="Tela cheia" title="Tela cheia" hidden>⛶</button>
   <button id="btConfig" aria-label="Configurar servidor" title="Servidor">⚙</button>
@@ -262,7 +264,7 @@ async function executar(botao, acao) {
 // No app "Coletor WMS" o WebView cria window.ColetorApp. No simulador (/coletor) a página
 // roda num iframe e o simulador oferece um ColetorAppSimulado. No Chrome: null.
 const app = (() => {
-  try { return window.ColetorApp || (window.parent !== window && window.parent.ColetorAppSimulado) || null; } catch { return null; }
+  try { return window.ColetorApp || null; } catch { return null; }
 })();
 let modoGatilho = "rfid", potenciaAtual = 100;
 /** O gatilho do MC33xxR é um só: lê RFID ou código de barras (a chave ao lado do campo Leitura). */
@@ -623,8 +625,7 @@ telas.menu = {
   titulo: "WMS Coletor",
   async abrir() {
     const item = (hash, ic, nome, id = "") => `<a class="tile" href="#${hash}" style="text-decoration:none"><span class="ic">${ic}</span>${nome}<span class="badge" id="${id}"></span></a>`;
-    tela.innerHTML = `<img src="/static/senai.png" alt="SENAI" style="display:block;width:70%;max-width:260px;margin:6px auto 12px;border-radius:4px">
-    <div class="grade-menu">
+    tela.innerHTML = `<div class="grade-menu">
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
       ${item("localizar", "🎯", "Localizar etiqueta")}

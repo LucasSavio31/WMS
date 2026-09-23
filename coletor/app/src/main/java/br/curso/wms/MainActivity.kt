@@ -26,7 +26,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.Toast
 import org.json.JSONObject
+import kotlin.concurrent.thread
 
 /**
  * App do coletor = "casca" da tela web do servidor (http://PC:8000/m).
@@ -96,8 +98,8 @@ class MainActivity : Activity() {
             }
         }
 
-        // Primeira vez: pergunta o endereço do servidor
-        if (prefs.contains("servidor")) abrirTela() else configurarServidor()
+        // Primeira vez: procura o servidor na rede sozinho (se não achar, pergunta o endereço)
+        if (prefs.contains("servidor")) abrirTela() else procurarServidor()
 
         // O app fechou da última vez? Mostra o motivo (para corrigir)
         prefs.getString("ultimoErro", null)?.let { erro ->
@@ -237,8 +239,32 @@ class MainActivity : Activity() {
 
     // ============================================================ servidor
 
+    /** Acha o servidor na rede Wi-Fi (ver Descoberta.kt) e já abre a tela. */
+    private fun procurarServidor() {
+        val aviso = AlertDialog.Builder(this)
+            .setTitle("Procurando o servidor…")
+            .setMessage("Procurando o Mini WMS na rede Wi-Fi. Leva alguns segundos.")
+            .setCancelable(false)
+            .show()
+        thread {
+            val url = try { Descoberta.procurar() } catch (e: Throwable) { null }
+            runOnUiThread {
+                aviso.dismiss()
+                if (url != null) {
+                    Servidor.url = url
+                    prefs.edit().putString("servidor", url).apply()
+                    Toast.makeText(this, "Servidor encontrado: $url", Toast.LENGTH_LONG).show()
+                    abrirTela()
+                } else {
+                    configurarServidor("Não achei o servidor na rede. Confira se ele está aberto no PC e se o coletor " +
+                        "está no mesmo Wi-Fi, ou digite o endereço que aparece na tela do PC.")
+                }
+            }
+        }
+    }
+
     /** Popup só com o endereço do servidor. Salvar fecha o popup e abre a tela. */
-    private fun configurarServidor() {
+    private fun configurarServidor(mensagem: String? = null) {
         val campo = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             hint = "http://192.168.0.10:8000"
@@ -252,8 +278,10 @@ class MainActivity : Activity() {
         }
         AlertDialog.Builder(this)
             .setTitle("Endereço do servidor (PC)")
+            .apply { if (mensagem != null) setMessage(mensagem) }
             .setView(caixa)
             .setCancelable(false)
+            .setNeutralButton("Procurar na rede") { _, _ -> procurarServidor() }
             .setNegativeButton("Cancelar") { _, _ -> abrirTela() }
             .setPositiveButton("Salvar") { _, _ ->
                 var url = campo.text.toString().trim().trimEnd('/')
@@ -274,6 +302,7 @@ class MainActivity : Activity() {
             .setCancelable(false)
             .setPositiveButton("Tentar de novo") { _, _ -> abrirTela() }
             .setNegativeButton("Mudar servidor") { _, _ -> configurarServidor() }
+            .setNeutralButton("Procurar na rede") { _, _ -> procurarServidor() }
             .show()
     }
 
