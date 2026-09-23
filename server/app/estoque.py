@@ -482,9 +482,11 @@ def etiquetas_inventario(con, inventario_id):
             FROM inventario_etiquetas e JOIN lotes l ON l.id=e.lote_id JOIN produtos p ON p.id=l.produto_id
             WHERE e.inventario_id=? ORDER BY ordem, p.sku, e.epc""", (inventario_id,)))
     desconhecidas = db.linhas(con.execute(
-        """SELECT epc, 'SOBRA' AS situacao, NULL AS contagem_id, NULL AS lote_id, '' AS sku,
-                  'etiqueta não cadastrada' AS descricao, '' AS lote, 1 AS desconhecida
-           FROM inventario_desconhecidas WHERE inventario_id=? ORDER BY epc""", (inventario_id,)))
+        """SELECT d.epc, 'SOBRA' AS situacao, NULL AS contagem_id, NULL AS lote_id, COALESCE(p.sku, '') AS sku,
+                  CASE WHEN p.id IS NULL THEN 'etiqueta não cadastrada' ELSE 'incluída no estoque' END AS descricao,
+                  '' AS lote, 1 AS desconhecida, d.produto_id AS incluida_em
+           FROM inventario_desconhecidas d LEFT JOIN produtos p ON p.id=d.produto_id
+           WHERE d.inventario_id=? ORDER BY d.produto_id IS NOT NULL, d.epc""", (inventario_id,)))
     if guardadas or not so_rfid(con, inventario_id):
         return desconhecidas + guardadas if guardadas else guardadas
     return desconhecidas + db.linhas(con.execute(
@@ -786,3 +788,34 @@ def cancelar_recebimento(con, recebimento_id):
     rec = buscar_recebimento(con, recebimento_id, ("ABERTO",))
     con.execute("UPDATE recebimentos SET status='CANCELADO', finalizado_em=? WHERE id=?", (db.agora(), recebimento_id))
     return {"numero": rec["numero"], "status": "CANCELADO"}
+
+
+def incluir_sobras(con, inventario_id, produto_id, epcs=None, origem="PC"):
+    """Dá entrada no estoque das etiquetas a mais (não cadastradas) do inventário, como o produto escolhido.
+
+    Inventário aberto: elas passam a contar como etiquetas lidas normais.
+    Inventário fechado: continuam registradas como sobra daquele inventário ("incluída no estoque").
+    """
+    inv = con.execute("SELECT * FROM inventarios WHERE id=?", (inventario_id,)).fetchone()
+    if not inv:
+        raise ErroEstoque("Inventário não encontrado")
+    pendentes = [r["epc"] for r in con.execute(
+        "SELECT epc FROM inventario_desconhecidas WHERE inventario_id=? AND produto_id IS NULL ORDER BY epc", (inventario_id,))]
+    if epcs:
+        pendentes = [e for e in pendentes if e in {x.strip().upper() for x in epcs}]
+    # alguma pode ter sido cadastrada depois (ex.: por uma ordem): essas ficam de fora
+    pendentes = [e for e in pendentes if not con.execute("SELECT 1 FROM tags WHERE epc=? AND status='ATIVA'", (e,)).fetchone()]
+    if not pendentes:
+        raise ErroEstoque("Nenhuma etiqueta a incluir")
+    r = entrada(con, produto_id, "", None, epcs=pendentes, origem=origem, documento=f"INV-{inventario_id}")
+    if inv["status"] == "ABERTO":
+        lote_id = r["lote_id"]
+        for epc in pendentes:
+            con.execute("""INSERT OR IGNORE INTO contagens (inventario_id, lote_id, quantidade, epc, origem, meio, data_hora)
+                           VALUES (?,?,1,?,?,'RFID',?)""", (inventario_id, lote_id, epc, origem, db.agora()))
+        con.execute(f"DELETE FROM inventario_desconhecidas WHERE inventario_id=? AND epc IN ({','.join('?' * len(pendentes))})",
+                    (inventario_id, *pendentes))
+    else:
+        con.execute(f"UPDATE inventario_desconhecidas SET produto_id=? WHERE inventario_id=? AND epc IN ({','.join('?' * len(pendentes))})",
+                    (produto_id, inventario_id, *pendentes))
+    return {"incluidas": len(pendentes), "sku": r["sku"], "saldo": r["saldo"]}

@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS inventario_desconhecidas (
     epc           TEXT NOT NULL,
     origem        TEXT NOT NULL,
     data_hora     TEXT NOT NULL,
+    produto_id    INTEGER REFERENCES produtos(id),   -- preenchido quando foi incluída no estoque
     PRIMARY KEY (inventario_id, epc)
 );
 
@@ -190,6 +191,7 @@ COLUNAS_NOVAS = {
     "lotes": {"endereco_id": "INTEGER REFERENCES enderecos(id)",
               "status": "TEXT NOT NULL DEFAULT 'LIBERADO'", "criado_em": "TEXT"},
     "movimentos": {"documento": "TEXT", "endereco": "TEXT", "saldo_apos": "REAL"},
+    "inventario_desconhecidas": {"produto_id": "INTEGER REFERENCES produtos(id)"},
 }
 
 

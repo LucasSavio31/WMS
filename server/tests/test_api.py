@@ -356,6 +356,19 @@ def test_inventario_por_rfid_e_estorno(api):
     guardadas = [(e["epc"], e["situacao"]) for e in api.get(f"/api/inventarios/{inv}").json()["etiquetas"]]
     assert guardadas == [("X8", "SOBRA"), ("X9", "SOBRA"), ("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
     assert [c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"] if c["lote_id"] is None][0]["contado"] == 2
+    # incluir as 2 a mais no estoque (inventário já fechado)
+    r = api.post(f"/api/inventarios/{inv}/incluir-sobras", json={"produto_id": pid})
+    assert r.status_code == 200 and r.json()["incluidas"] == 2
+    assert api.get("/api/tags/X8").json()["status"] == "ATIVA" and saldo(api, "SEM-LOTE") == 4   # 2 (T1 baixada agora) + 2
+    assert all(e["descricao"] == "incluída no estoque" for e in api.get(f"/api/inventarios/{inv}").json()["etiquetas"][:2])
+    assert api.post(f"/api/inventarios/{inv}/incluir-sobras", json={"produto_id": pid}).status_code == 400   # nada mais a incluir
+
+    # inventário aberto: incluída passa a contar como lida normal
+    inv2 = api.post("/api/inventarios", json={"nome": "aberto"}).json()["id"]
+    api.post(f"/api/inventarios/{inv2}/contagens", json={"epcs": ["Z1"]})
+    api.post(f"/api/inventarios/{inv2}/incluir-sobras", json={"produto_id": pid})
+    d2 = api.get(f"/api/inventarios/{inv2}").json()
+    assert [(e["epc"], e["situacao"]) for e in d2["etiquetas"] if e["epc"] == "Z1"] == [("Z1", "OK")]
     api.post("/api/tags/T1/estornar")
     assert api.get("/api/tags/T4").json()["status"] == "BAIXADA" and api.get("/api/tags/T3").json()["status"] == "ATIVA"
-    assert saldo(api, "SEM-LOTE") == 3 and saldo(api, "CX") == 5
+    assert saldo(api, "SEM-LOTE") == 6 and saldo(api, "CX") == 5   # 4 + Z1 incluída + T1 estornada

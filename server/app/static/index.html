@@ -409,6 +409,7 @@
         </div>
         <div id="iDetalhe" style="display:none">
           <div class="kpis" id="iKpis"></div>
+          <div id="iSobras"></div>
           <div class="grade">
             <div class="card" id="iCardContagem">
               <h2>Contagem</h2>
@@ -1292,13 +1293,31 @@ async function carregarInventario() {
     <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(4, "Nada para mostrar");
   const situacao = { OK: '<span class="selo sucesso">lida</span>', FALTA: '<span class="selo perigo">falta · não lida</span>',
     SOBRA: '<span class="selo perigo">sobra · não estava em estoque</span>' };
-  const rotulo = (e) => e.desconhecida ? '<span class="selo perigo">sobra · etiqueta não cadastrada</span>' : situacao[e.situacao];
+  const rotulo = (e) => e.incluida_em ? `<span class="selo sucesso">sobra · incluída no estoque (${esc(e.sku)})</span>`
+    : e.desconhecida ? '<span class="selo perigo">sobra · etiqueta não cadastrada</span>' : situacao[e.situacao];
+  // etiquetas a mais (não cadastradas) ainda não incluídas: opção de dar entrada como um produto
+  const pendentes = d.etiquetas.filter((e) => e.desconhecida && !e.incluida_em).length;
+  $("iSobras").innerHTML = pendentes ? `<div class="card" style="border-color:var(--alerta)">
+      <div class="card-titulo">${pendentes} etiqueta(s) a mais não cadastrada(s)</div>
+      <p class="ajuda">Se elas são de um produto, inclua no estoque: cada etiqueta vira 1 unidade desse produto.</p>
+      <div class="barra" style="margin:0"><select id="iSobraProduto" style="max-width:360px">
+        <option value="">— de qual produto são? —</option>${produtos.filter((p) => p.ativo).map((p) => `<option value="${p.id}">${esc(p.sku)} · ${esc(p.descricao)}</option>`).join("")}</select>
+        <button class="primario" onclick="incluirSobras(this)">Incluir no estoque</button></div></div>` : "";
   const etiquetas = d.etiquetas.filter((e) => $("iFiltroEpc").value !== "dif" || e.situacao !== "OK");
   $("tabContagens").innerHTML = etiquetas.map((e) => `<tr>
     <td class="mono ${e.situacao === "OK" ? "" : "neg"}">${esc(e.epc)}</td>
     <td>${esc(e.sku)} <span class="fraco">${esc(e.descricao)}</span></td><td>${rotulo(e)}</td>
     <td class="acoes">${aberto && e.contagem_id ? `<button class="link perigo-texto" onclick="removerContagem(${e.contagem_id}, this)">remover leitura</button>` : ""}</td></tr>`).join("")
     || vazio(4, d.etiquetas.length ? "Nenhuma divergência" : "Nenhuma etiqueta");
+}
+async function incluirSobras(botao) {
+  const produtoId = Number($("iSobraProduto").value);
+  if (!produtoId) return toast("Escolha o produto das etiquetas", "erro");
+  await executar(botao, async () => {
+    const r = await api("POST", `/api/inventarios/${inventarioAtual}/incluir-sobras`, { produto_id: produtoId });
+    toast(`${r.incluidas} etiqueta(s) incluída(s) no estoque como ${r.sku} (saldo ${num(r.saldo)})`);
+    await carregarInventario();
+  });
 }
 async function removerContagem(id, botao) {
   await executar(botao, async () => { await api("DELETE", `/api/inventarios/${inventarioAtual}/contagens/${id}`); await carregarInventario(); });

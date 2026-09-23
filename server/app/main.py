@@ -662,6 +662,18 @@ def fechar_inventario(inventario_id: int, con: Con = Depends(conexao)):
     return estoque.fechar_inventario(con, inventario_id)
 
 
+class IncluirSobras(BaseModel):
+    produto_id: int
+    epcs: list[str] = []                  # vazio = todas as não cadastradas
+    origem: Origem = "PC"
+
+
+@app.post("/api/inventarios/{inventario_id}/incluir-sobras")
+def incluir_sobras(inventario_id: int, i: IncluirSobras, con: Con = Depends(conexao)):
+    """Etiquetas a mais (não cadastradas) do inventário entram no estoque como o produto escolhido."""
+    return estoque.incluir_sobras(con, inventario_id, i.produto_id, i.epcs, i.origem)
+
+
 @app.post("/api/inventarios/{inventario_id}/cancelar")
 def cancelar_inventario(inventario_id: int, con: Con = Depends(conexao)):
     return estoque.cancelar_inventario(con, inventario_id)

@@ -969,10 +969,17 @@ telas.inventario = {
             ${barraProgresso(Math.min(x.contado, x.sistema), x.sistema)}</div>
           <span class="qtd" style="color:${x.contado < x.sistema ? "var(--alerta)" : x.contado > x.sistema ? "var(--primaria)" : "var(--sucesso)"}">${num(x.contado)}/${num(x.sistema)}</span></li>`).join("")
           || `<li class="vazio">Nenhuma etiqueta em estoque</li>`}</ul></div>
+      ${(() => {
+        const pendentes = (d.etiquetas || []).filter((e) => e.desconhecida && !e.incluida_em).length;
+        return pendentes ? `<div class="card" style="border-color:var(--alerta)"><h2>${pendentes} etiqueta(s) a mais não cadastrada(s)</h2>
+          <label class="campo"><span>Incluir no estoque como</span><select id="ivSobraProduto">
+            <option value="">— de qual produto são? —</option>${produtos.filter((p) => p.ativo).map((p) => `<option value="${p.id}">${esc(p.sku)} · ${esc(p.descricao)}</option>`).join("")}</select></label>
+          <div class="botoes"><button class="b primario" data-acao="incluirSobras" id="ivIncluir">Incluir no estoque</button></div></div>` : "";
+      })()}
       <div class="card"><h2>Etiquetas <span class="dir fraco">vermelho = diferença</span></h2><ul class="lista">
         ${(d.etiquetas || []).slice(0, 300).map((e) => `<li><div class="info">
             <div class="mono" style="${e.situacao === "OK" ? "" : "color:var(--perigo);font-weight:700"}">${esc(e.epc)}</div>
-            <div class="fraco">${e.desconhecida ? "sobra · etiqueta não cadastrada" : esc(e.sku) + " · " + (e.situacao === "OK" ? "lida" : e.situacao === "FALTA" ? "falta (não lida)" : "sobra (não estava em estoque)")}</div></div></li>`).join("")
+            <div class="fraco">${e.incluida_em ? "sobra · incluída no estoque (" + esc(e.sku) + ")" : e.desconhecida ? "sobra · etiqueta não cadastrada" : esc(e.sku) + " · " + (e.situacao === "OK" ? "lida" : e.situacao === "FALTA" ? "falta (não lida)" : "sobra (não estava em estoque)")}</div></div></li>`).join("")
           || `<li class="vazio">Nenhuma etiqueta</li>`}</ul></div>
       ${this.confirmando ? `<div class="card" style="border-color:var(--alerta)"><h2>Finalizar inventário?</h2>
           <p style="margin:0 0 8px">O estoque passa a ser o que foi lido:<br>
@@ -999,6 +1006,15 @@ telas.inventario = {
   },
   pedirFinalizar() { this.confirmando = true; this.desenhar(); },
   voltarConfirmar() { this.confirmando = false; this.desenhar(); },
+  async incluirSobras() {
+    const produtoId = Number($("ivSobraProduto").value);
+    if (!produtoId) return msg("Escolha de qual produto são as etiquetas", "info");
+    await executar($("ivIncluir"), async () => {
+      const r = await api("POST", `/api/inventarios/${this.inv.inventario.id}/incluir-sobras`, { produto_id: produtoId, origem: "COLETOR" });
+      await this.abrirInv(null, this.inv.inventario.id);
+      msg(`✓ ${r.incluidas} etiqueta(s) incluída(s) no estoque como ${r.sku}`);
+    });
+  },
   async finalizar() {
     await executar($("ivFinalizar"), async () => {
       const r = await api("POST", `/api/inventarios/${this.inv.inventario.id}/fechar`);
