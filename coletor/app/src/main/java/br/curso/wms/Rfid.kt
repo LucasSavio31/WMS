@@ -38,6 +38,14 @@ object Rfid : RfidEventsListener {
     /** A tela que está aberta define o que fazer com cada EPC lido. */
     var aoLerTag: ((String) -> Unit)? = null
 
+    /** Gatilho apertado (true) / solto (false) em modo RFID. */
+    var aoGatilho: ((Boolean) -> Unit)? = null
+
+    /** Problemas do leitor viram mensagem na tela (em vez de sumir em silêncio). */
+    var aoAvisar: ((String) -> Unit)? = null
+
+    private fun avisar(oque: String, e: Throwable) = aoAvisar?.invoke("RFID: $oque (${e.javaClass.simpleName}: ${e.message})")
+
     val conectado get() = leitor?.isConnected == true
 
     fun conectar(context: Context, aoTerminar: (String) -> Unit) {
@@ -90,7 +98,7 @@ object Rfid : RfidEventsListener {
                     if (rfid) ENUM_TRIGGER_MODE.RFID_MODE else ENUM_TRIGGER_MODE.BARCODE_MODE, true
                 )
             } catch (e: Throwable) {
-                // sem RFID: segue só com código de barras
+                avisar("não foi possível trocar o gatilho", e)
             }
         }
     }
@@ -105,6 +113,7 @@ object Rfid : RfidEventsListener {
                 config.setTransmitPowerIndex((niveis.size - 1) * percentual / 100)
                 r.Config.Antennas.setAntennaRfConfig(1, config)
             } catch (e: Throwable) {
+                avisar("não foi possível ajustar a potência", e)
             }
         }
     }
@@ -144,10 +153,12 @@ object Rfid : RfidEventsListener {
         if (dados.statusEventType != STATUS_EVENT_TYPE.HANDHELD_TRIGGER_EVENT) return
         val apertou = dados.HandheldTriggerEventData.handheldEvent ==
             HANDHELD_TRIGGER_EVENT_TYPE.HANDHELD_TRIGGER_PRESSED
+        aoGatilho?.invoke(apertou)
         thread {
             try {
                 if (apertou) leitor?.Actions?.Inventory?.perform() else leitor?.Actions?.Inventory?.stop()
             } catch (ex: Throwable) {
+                avisar(if (apertou) "não começou a leitura" else "não parou a leitura", ex)
             }
         }
     }

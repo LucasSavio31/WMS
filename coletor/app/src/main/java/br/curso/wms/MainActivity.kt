@@ -6,6 +6,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -146,6 +147,8 @@ class MainActivity : Activity() {
             return
         }
         Rfid.aoLerTag = { epc -> chamarTela("leituraRfid", epc) }
+        Rfid.aoGatilho = { apertou -> chamarTela("gatilhoRfidEvento", if (apertou) "1" else "0") }
+        Rfid.aoAvisar = { msg -> chamarTela("statusRfid", msg) }
         Rfid.conectar(applicationContext) { msg -> chamarTela("statusRfid", msg) }
     }
 
@@ -159,8 +162,26 @@ class MainActivity : Activity() {
     /** Em segundo plano o app solta o leitor (assim o 123RFID e outros apps conseguem usar). */
     override fun onStop() {
         Rfid.aoLerTag = null
+        Rfid.aoGatilho = null
+        Rfid.aoAvisar = null
         Rfid.desconectar()
+        leitorDataWedge(true)   // devolve o leitor de código de barras para os outros apps
         super.onStop()
+    }
+
+    /**
+     * Liga/desliga o leitor de código de barras do DataWedge (API por Intent).
+     * Com ele ligado, o DataWedge "pega" o gatilho e o RFID não lê; por isso,
+     * em modo RFID o app desliga o leitor de código de barras.
+     */
+    private fun leitorDataWedge(ligado: Boolean) {
+        try {
+            sendBroadcast(
+                Intent("com.symbol.datawedge.api.ACTION")
+                    .putExtra("com.symbol.datawedge.api.SCANNER_INPUT_PLUGIN", if (ligado) "ENABLE_PLUGIN" else "DISABLE_PLUGIN")
+            )
+        } catch (e: Throwable) {
+        }
     }
 
     /** Chama uma função JavaScript da página com um texto (ex.: leituraRfid("E280...")). */
@@ -172,7 +193,10 @@ class MainActivity : Activity() {
     /** Métodos que a página chama: ColetorApp.gatilhoRfid(true), ColetorApp.potencia(30)... */
     inner class Ponte {
         @JavascriptInterface
-        fun gatilhoRfid(rfid: Boolean) = Rfid.usarGatilhoParaRfid(rfid)
+        fun gatilhoRfid(rfid: Boolean) {
+            leitorDataWedge(!rfid)   // gatilho só para o RFID ou só para o código de barras
+            Rfid.usarGatilhoParaRfid(rfid)
+        }
 
         @JavascriptInterface
         fun potencia(percentual: Int) = Rfid.potencia(percentual)

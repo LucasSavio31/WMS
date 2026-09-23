@@ -79,6 +79,8 @@
   .leitura textarea:focus { outline: none; border-color: var(--primaria); border-style: solid; }
   .leitura #modo { width: auto; padding: 0 8px; font: 700 13px Roboto, Arial, sans-serif; white-space: nowrap; }
   .leitura #modo.rfid { background: var(--fundo-info); border-color: var(--primaria); color: var(--primaria); }
+  .leitura #modo.lendo { background: var(--primaria); color: #fff; animation: pulsa .6s infinite alternate; }
+  @keyframes pulsa { to { opacity: .6; } }
   .leitura #modo.barras { background: var(--fundo-alerta); border-color: var(--alerta); color: var(--alerta); }
   .leitura button { width: 42px; border: 1px solid var(--borda); border-radius: 8px; background: var(--painel); color: var(--texto); font-size: 18px; }
 
@@ -270,6 +272,12 @@ if (app) {
     msg(modoGatilho === "rfid" ? "Gatilho lê etiquetas RFID" : "Gatilho lê código de barras", "info", false);
   });
 }
+/** O app avisa quando o gatilho é apertado/solto em modo RFID (mostra "Lendo…" na chave). */
+window.gatilhoRfidEvento = (apertado) => {
+  const lendo = apertado === "1";
+  $("modo").textContent = lendo ? "📡 Lendo…" : modoGatilho === "rfid" ? "📡 RFID" : "▮▮ Código";
+  $("modo").classList.toggle("lendo", lendo);
+};
 /** O app chama a cada etiqueta lida pelo RFID. */
 window.leituraRfid = (epc) => {
   const dado = String(epc).trim().toUpperCase();
@@ -280,7 +288,7 @@ window.leituraRfid = (epc) => {
 };
 /** O app avisa quando o leitor RFID conecta (ou não): reaplica o modo do gatilho e a potência. */
 window.statusRfid = (texto) => {
-  const ok = !/indispon|erro/i.test(texto);
+  const ok = !/indispon|erro|não /i.test(texto);
   msg(texto, ok ? "info" : "erro", !ok);
   if (ok) { definirGatilho(modoGatilho); definirPotencia(potenciaAtual); }
 };

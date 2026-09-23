@@ -152,7 +152,8 @@ O DataWedge fica só com o **código de barras**; o RFID é do app. Os nomes pod
 1. **DataWedge** → menu ⋮ → **New profile** → nome `WMS` (se já criou para o Chrome, use o mesmo).
 2. **Associated apps** → ⋮ → **New app/activity** → **br.curso.wms** (Coletor WMS) → `*`.
    Se o perfil estava associado ao `com.android.chrome`, pode remover essa associação.
-3. **Barcode input**: **ativado**.
+3. **Barcode input**: **ativado**. Em modo 📡 RFID o próprio app desliga o leitor de código de barras do
+   DataWedge (pela API de Intent), senão o DataWedge "pega" o gatilho; em modo ▮▮ Código, religa.
 4. **RFID input**: **desativado** (se ficar ligado, o DataWedge disputa o leitor com o app).
 5. **Keystroke output**: ativado → *Basic data formatting*: **Send data** e **Send ENTER key** ativados.
    Intent output: desativado.
