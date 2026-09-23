@@ -1,0 +1,80 @@
+# Gera os programas prontos e publica na página "Releases" do repositório:
+#   - WMS-Servidor.exe  (Windows, não precisa instalar Python)
+#   - ColetorWMS.apk    (Zebra MC3390R / MC3330R)
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  servidor-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Testes
+        run: |
+          pip install -r requirements-dev.txt
+          pytest -q
+      - name: Gerar WMS-Servidor.exe
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --name WMS-Servidor --add-data "app/static;app/static" --collect-submodules uvicorn wms_servidor.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WMS-Servidor
+          path: server/dist/WMS-Servidor.exe
+
+  coletor-android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coletor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Baixar SDK RFID da Zebra (API3)
+        run: >
+          curl -fsSL -o app/libs/API3_LIB-release.aar
+          https://raw.githubusercontent.com/ZebraDevs/RFID-Android-Inventory-Sample/master/RFIDAPI3Library/API3_LIB-release-2.0.2.82.aar
+      - name: Gerar APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ColetorWMS.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ColetorWMS
+          path: coletor/ColetorWMS.apk
+
+  publicar:
+    needs: [servidor-windows, coletor-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.${{ github.run_number }}
+          name: Mini WMS v1.${{ github.run_number }}
+          make_latest: true
+          body: |
+            **WMS-Servidor.exe**: baixe no PC (Windows) e dê dois cliques. O navegador abre em http://localhost:8000.
+            **ColetorWMS.apk**: instale no coletor Zebra MC3390R / MC3330R e informe o endereço que aparece na janela do servidor.
+          files: |
+            WMS-Servidor.exe
+            ColetorWMS.apk

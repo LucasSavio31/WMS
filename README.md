@@ -16,6 +16,21 @@ Controle de estoque simples com **leitor Zebra MC3390R / MC3330R** (Android, RFI
 O coletor **não tem regra nem banco de dados**: ele só envia o que leu. Quem decide o lote (FEFO),
 confere o saldo e grava a data/hora é o servidor. Por isso o relógio do coletor não precisa estar certo.
 
+## Jeito fácil: baixar pronto
+
+Na página **Releases** do repositório (lado direito, "Releases" → última versão), baixe:
+
+| Arquivo | Onde | Como usar |
+|---|---|---|
+| `WMS-Servidor.exe` | PC com Windows | Coloque numa pasta (ex.: `C:\WMS`) e dê dois cliques. Não precisa instalar nada. O navegador abre sozinho em http://localhost:8000. O banco `estoque.db` é criado na mesma pasta. |
+| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. No app, digite o endereço que aparece na janela do servidor ("Usar no coletor") e toque em *Salvar e testar conexão*. |
+
+- Na primeira execução, o Windows pode mostrar "O Windows protegeu o computador": clique em *Mais informações* e depois em *Executar assim mesmo*.
+- Quando aparecer o aviso do Firewall, clique em **Permitir acesso**. Isso é necessário para o coletor alcançar o PC.
+- O PC e o coletor precisam estar na mesma rede Wi-Fi.
+
+Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/workflows/build.yml`) a cada alteração no `main`.
+
 ## Funções
 
 | Função | PC (navegador) | Coletor |
@@ -63,6 +78,7 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 | `server/app/estoque.py` | **Regras**: entrada, baixa FEFO, baixa por tag, inventário |
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
+| `server/wms_servidor.py` | Inicia o servidor e abre o navegador (vira o `WMS-Servidor.exe`) |
 
 ---
 
@@ -86,7 +102,8 @@ e a compilação e a instalação são feitas pelo terminal. O Android Studio s�
    ```
    sdk.dir=C\:\\Android
    ```
-4. Baixe o **Zebra RFID SDK for Android** no site da Zebra e copie o `API3_LIB-release.aar` para `coletor/app/libs/`.
+4. Baixe o SDK RFID da Zebra (API3) para `coletor/app/libs/API3_LIB-release.aar`. É o mesmo arquivo que o build automático usa:
+   `https://raw.githubusercontent.com/ZebraDevs/RFID-Android-Inventory-Sample/master/RFIDAPI3Library/API3_LIB-release-2.0.2.82.aar`
 5. VS Code: extensões *Kotlin* (fwcd.kotlin) e *Gradle for Java*.
 
 **Compilar e instalar** (coletor ligado no USB, com *Depuração USB* ativada nas *Opções do desenvolvedor*):
