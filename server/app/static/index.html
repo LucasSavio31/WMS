@@ -178,12 +178,13 @@
   <aside>
     <div class="marca">
       <svg width="30" height="30" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1f6feb"/><path d="M8 12l8-4 8 4v10l-8 4-8-4z M8 12l8 4 8-4 M16 16v10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
-      <div>Mini WMS<small>RFID · FEFO</small></div>
+      <div>Mini WMS</div>
     </div>
     <nav id="menu">
       <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Estoque</a>
       <a href="#produtos" data-pagina="produtos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14 M7 5v14 M11 5v14 M14 5v14 M18 5v14 M20 5v14"/></svg>Produtos</a>
       <a href="#ordens" data-pagina="ordens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M12 11v6 M9 14l3 3 3-3"/></svg>Ordens de recebimento<span class="contador" id="cntRec"></span></a>
+      <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa</a>
       <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
       <a href="#movimentos" data-pagina="movimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Histórico</a>
       <div class="grupo">Coletor</div>
@@ -321,38 +322,34 @@
       </section>
 
       <!-- =================================================== BAIXA -->
-      <section class="pagina" id="saida" data-titulo="Baixa de estoque" data-sub="Consumo, avaria, perda e vencimento. Para vender a um cliente, use Pedidos / Expedição">
-        <div class="grade g-form">
+      <section class="pagina" id="saida" data-titulo="Baixa" data-sub="Com o número da etiqueta ou, para produto sem etiqueta, pela quantidade">
+        <div class="grade g2">
           <div class="card">
-            <h2>Baixa por quantidade (FEFO)</h2>
-            <p class="ajuda">O sistema escolhe os lotes: primeiro o que vence antes. Lotes vencidos só saem com o motivo VENCIMENTO.</p>
-            <form id="formBaixa" autocomplete="off">
+            <h2>Com etiqueta</h2>
+            <p class="ajuda">Digite ou cole o número de uma ou mais etiquetas (EPC), uma por linha.</p>
+            <form id="formEpc" autocomplete="off">
               <div class="campos">
-                <label class="campo largo"><span>Código de barras / SKU</span><input id="bCodigo" class="leitor" placeholder="Bipe o código e tecle Enter"></label>
-                <label class="campo largo"><span>Produto <b class="obrig">*</b></span><select id="bProduto" data-produtos="todos" required></select></label>
-                <label class="campo"><span>Quantidade <b class="obrig">*</b></span><input id="bQtd" type="number" min="0" step="any" required></label>
-                <label class="campo"><span>Motivo <b class="obrig">*</b></span><select id="bMotivo" data-motivos required></select></label>
-                <label class="campo largo"><span>Documento / observação</span><input id="bDoc" placeholder="Ex.: Requisição 45"></label>
+                <label class="campo largo"><span>Número da etiqueta (EPC)</span><textarea id="tEpcs" rows="5" class="mono" required placeholder="E2801160600002..."></textarea></label>
+                <label class="campo"><span>Motivo</span><select id="tMotivo" data-motivos></select></label>
               </div>
-              <div id="bPrevia" class="aviso"></div>
               <div class="botoes">
-                <button class="perigo" type="submit">Confirmar baixa</button>
+                <button class="perigo" type="submit">Baixar</button>
                 <button type="reset">Limpar</button>
               </div>
             </form>
           </div>
           <div class="card">
-            <h2>Baixa por etiqueta RFID (EPC)</h2>
-            <p class="ajuda">No dia a dia a baixa por RFID é feita no coletor. Aqui dá para digitar ou colar os EPCs, um por linha.</p>
-            <form id="formEpc" autocomplete="off">
+            <h2>Sem etiqueta</h2>
+            <p class="ajuda">Escolha o produto e a quantidade: sai do lote que vence primeiro.</p>
+            <form id="formBaixa" autocomplete="off">
               <div class="campos">
-                <label class="campo largo"><span>EPCs <b class="obrig">*</b></span><textarea id="tEpcs" rows="5" class="mono" required placeholder="E2801160600002..."></textarea></label>
-                <label class="campo"><span>Motivo</span><select id="tMotivo" data-motivos></select></label>
-                <label class="campo"><span>Documento</span><input id="tDoc"></label>
+                <label class="campo largo"><span>Produto</span><select id="bProduto" data-produtos="todos" required></select></label>
+                <label class="campo"><span>Quantidade</span><input id="bQtd" type="number" min="0" step="any" required></label>
+                <label class="campo"><span>Motivo</span><select id="bMotivo" data-motivos required></select></label>
               </div>
-              <div id="tResultado" class="aviso"></div>
+              <div id="bPrevia" class="aviso"></div>
               <div class="botoes">
-                <button class="perigo" type="submit">Baixar tags</button>
+                <button class="perigo" type="submit">Baixar</button>
                 <button type="reset">Limpar</button>
               </div>
             </form>
@@ -444,9 +441,11 @@
             </div>
           </div>
           <div class="card">
-            <div class="card-titulo">Contagens registradas</div>
+            <div class="card-titulo">Etiquetas <span class="fraco" style="font-weight:400">em vermelho: com diferença</span>
+              <span class="acoes"><select id="iFiltroEpc" style="width:auto">
+                <option value="">Todas</option><option value="dif">Só divergências</option></select></span></div>
             <div class="tabela"><table>
-              <thead><tr><th>Hora</th><th>Produto</th><th>Lote</th><th class="num">Qtd</th><th>EPC</th><th>Origem</th><th>Meio</th><th></th></tr></thead>
+              <thead><tr><th>EPC</th><th>Produto</th><th>Situação</th><th></th></tr></thead>
               <tbody id="tabContagens"></tbody></table></div>
           </div>
         </div>
@@ -1075,7 +1074,6 @@ async function cancelarOrdem(botao) {
 }
 
 // ======================================================================= baixa
-ligarLeitor($("bCodigo"), $("bProduto"), () => $("bQtd").focus());
 let temporizadorPrevia;
 function agendarPrevia() { clearTimeout(temporizadorPrevia); temporizadorPrevia = setTimeout(previaFefo, 300); }
 ["bProduto", "bQtd", "bMotivo"].forEach((id) => $(id).addEventListener("input", agendarPrevia));
@@ -1099,16 +1097,16 @@ aoEnviar($("formBaixa"), async () => {
   if (!(await confirmar("Confirmar baixa", `Baixar ${num($("bQtd").value)} ${p.unidade} de ${p.sku} · ${p.descricao}\nMotivo: ${$("bMotivo").value}`, "Confirmar baixa"))) return false;
   const r = await api("POST", "/api/baixas", {
     produto_id: p.id, quantidade: Number($("bQtd").value), motivo: $("bMotivo").value,
-    documento: $("bDoc").value, meio: $("bCodigo").value ? "BARRAS" : "MANUAL",
+    meio: "MANUAL",
   });
   toast("Baixa feita: " + r.lotes.map((l) => `${num(l.quantidade)} do lote ${l.lote}`).join(", "));
 });
-$("formBaixa").addEventListener("reset", () => setTimeout(() => { $("bPrevia").innerHTML = ""; $("bCodigo").focus(); }));
+$("formBaixa").addEventListener("reset", () => setTimeout(() => { $("bPrevia").innerHTML = ""; $("bProduto").focus(); }));
 
 aoEnviar($("formEpc"), async () => {
   const epcs = $("tEpcs").value.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean);
   if (!epcs.length) throw new Error("Informe pelo menos um EPC");
-  const r = await api("POST", "/api/baixas", { epcs, motivo: $("tMotivo").value, documento: $("tDoc").value });
+  const r = await api("POST", "/api/baixas", { epcs, motivo: $("tMotivo").value });
   const ok = r.tags.filter((t) => t.ok), erros = r.tags.filter((t) => !t.ok);
   toast(`${ok.length} de ${r.tags.length} tag(s) baixada(s)`, erros.length ? "alerta" : "ok");
   erros.forEach((t) => toast(`${t.epc}: ${t.erro}`, "erro"));
@@ -1243,6 +1241,7 @@ aoEnviar($("formNovoInv"), async () => {
 });
 $("iLista").addEventListener("change", () => carregarInventario());
 $("iFiltro").addEventListener("change", () => carregarInventario());
+$("iFiltroEpc").addEventListener("change", () => carregarInventario());
 ligarLeitor($("iCodigo"), $("iProduto"), () => $("iLote").focus());
 $("iProduto").addEventListener("change", async () => {
   const p = produtoPorId($("iProduto").value);
@@ -1289,11 +1288,14 @@ async function carregarInventario() {
     <td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span>${c.lote !== "SEM-LOTE" ? ` <span class="fraco">· lote ${esc(c.lote)}</span>` : ""}</td>
     <td class="num">${num(c.sistema)}</td><td class="num">${c.foi_contado ? num(c.contado) : '<span class="fraco">não contado</span>'}</td>
     <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(4, "Nada para mostrar");
-  $("tabContagens").innerHTML = d.contagens.map((c) => `<tr>
-    <td>${dataHoraBR(c.data_hora)}</td><td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td><td>${esc(c.lote)}</td>
-    <td class="num">${num(c.quantidade)}</td><td class="mono">${esc(c.epc)}</td><td>${esc(c.origem)}</td><td>${esc(c.meio)}</td>
-    <td class="acoes">${aberto ? `<button class="link perigo-texto" onclick="removerContagem(${c.id}, this)">remover</button>` : ""}</td></tr>`).join("")
-    || vazio(8, "Nenhuma contagem ainda");
+  const situacao = { OK: '<span class="selo sucesso">lida</span>', FALTA: '<span class="selo perigo">falta · não lida</span>',
+    SOBRA: '<span class="selo perigo">sobra · não estava em estoque</span>' };
+  const etiquetas = d.etiquetas.filter((e) => $("iFiltroEpc").value !== "dif" || e.situacao !== "OK");
+  $("tabContagens").innerHTML = etiquetas.map((e) => `<tr>
+    <td class="mono ${e.situacao === "OK" ? "" : "neg"}">${esc(e.epc)}</td>
+    <td>${esc(e.sku)} <span class="fraco">${esc(e.descricao)}</span></td><td>${situacao[e.situacao]}</td>
+    <td class="acoes">${aberto && e.contagem_id ? `<button class="link perigo-texto" onclick="removerContagem(${e.contagem_id}, this)">remover leitura</button>` : ""}</td></tr>`).join("")
+    || vazio(4, d.etiquetas.length ? "Nenhuma divergência" : "Nenhuma etiqueta");
 }
 async function removerContagem(id, botao) {
   await executar(botao, async () => { await api("DELETE", `/api/inventarios/${inventarioAtual}/contagens/${id}`); await carregarInventario(); });

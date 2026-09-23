@@ -204,6 +204,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = (v) => Number(v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+// "SEM-LOTE" é o lote automático de quem não usa lote: não aparece nas telas
+const loteTxt = (l) => (l && l !== "SEM-LOTE" ? " lote " + esc(l) : "");
+const lotePonto = (l) => (l && l !== "SEM-LOTE" ? " · lote " + esc(l) : "");
 const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "-");
 const numero = (texto) => { const v = parseFloat(String(texto).replace(",", ".")); return Number.isFinite(v) ? v : NaN; };
 
@@ -238,6 +241,8 @@ function bipe(tipo) {
 }
 let timerMsg;
 function msg(texto, tipo = "ok", som = true) {
+  // O coletor nunca trava o operador: só a falta de conexão aparece como erro.
+  if ((tipo === "erro" || tipo === "alerta") && !/conex|Wi-Fi/i.test(texto || "")) { tipo = "info"; som = false; }
   const m = $("msg");
   m.className = texto ? tipo : "";
   m.textContent = texto || "";
@@ -692,7 +697,7 @@ telas.avulsa = {
     this.tags.set(epc, t); this.desenharTags(); bipe("ok");
     try {
       const tag = await api("GET", "/api/tags/" + encodeURIComponent(epc));
-      if (tag.status === "ATIVA") { t.ok = false; t.info = `já em estoque: ${tag.sku} lote ${tag.lote}`; bipe("erro"); }
+      if (tag.status === "ATIVA") { this.tags.delete(epc); this.ignoradas = (this.ignoradas || 0) + 1; }   // já em estoque: ignorada
       else t.info = `reaproveitada (era ${tag.sku})`;
     } catch { /* tag nunca usada: nova */ }
     if (telaAtual === "avulsa") this.desenharTags();
@@ -706,7 +711,6 @@ telas.avulsa = {
     const epcs = [...this.tags.values()].filter((t) => t.ok).map((t) => t.epc);
     const qtd = numero($("enQtd").value);
     if (!epcs.length && !(qtd > 0)) return msg("Leia as etiquetas RFID ou informe a quantidade", "alerta");
-    if (!$("enLote").value.trim()) return msg("Informe o lote", "alerta");
     await executar(b, async () => {
       const r = await api("POST", "/api/entradas", {
         produto_id: this.produto.id, lote: $("enLote").value, validade: $("enValidade").value || null,
@@ -714,7 +718,7 @@ telas.avulsa = {
         documento: $("enDoc").value, origem: "COLETOR", meio: epcs.length ? "RFID" : "BARRAS",
       });
       this.abrir();
-      msg(`OK: entrada de ${num(r.quantidade)} ${r.sku}\nLote ${r.lote} em ${r.endereco} · saldo ${num(r.saldo)}` +
+      msg(`OK: entrada de ${num(r.quantidade)} ${r.sku}${r.lote !== "SEM-LOTE" ? "\nLote " + esc(r.lote) + " ·" : "\n"} saldo ${num(r.saldo)}` +
         (r.avisos.length ? "\n⚠ " + r.avisos.join("\n⚠ ") : ""), r.avisos.length ? "alerta" : "ok");
     });
   },
@@ -779,21 +783,25 @@ telas.entrada = {
     const faltas = this.ordem.itens.filter((i) => i.lidas !== i.prevista);
     return `<div class="card" style="border-color:var(--alerta)"><h2>Finalizar ${esc(this.ordem.recebimento.numero)}?</h2>
       <p style="margin:0 0 8px">Dá entrada no estoque de tudo que foi lido.</p>
-      ${faltas.length ? `<p style="margin:0 0 8px;color:var(--alerta)"><b>Divergências:</b><br>${faltas.map((i) => `${esc(i.sku)} lote ${esc(i.lote)}: ${num(i.lidas)} de ${num(i.prevista)}`).join("<br>")}</p>` : ""}
+      ${faltas.length ? `<p style="margin:0 0 8px;color:var(--alerta)"><b>Divergências:</b><br>${faltas.map((i) => `${esc(i.sku)}${loteTxt(i.lote)}: ${num(i.lidas)} de ${num(i.prevista)}`).join("<br>")}</p>` : ""}
       <div class="botoes"><button class="b" data-acao="cancelarFinalizar">Voltar</button><button class="b sucesso" data-acao="finalizar" id="rcFinalizar">Confirmar</button></div></div>`;
   },
-  escolherItem(_b, id) { this.itemId = Number(id); this.confirmando = false; this.desenhar(); msg(`Item ${this.item().sku} lote ${this.item().lote}: leia as etiquetas`, "info", false); },
+  escolherItem(_b, id) { this.itemId = Number(id); this.confirmando = false; this.desenhar(); msg(`Item ${this.item().sku}${loteTxt(this.item().lote)}: leia as etiquetas`, "info", false); },
   codigo(c) {
     if (!this.ordem) return msg("Abra uma ordem de recebimento", "alerta");
     const doProduto = this.ordem.itens.filter((i) => i.ean === c || i.sku.toUpperCase() === c);
-    if (!doProduto.length) return msg(`${c} não está nesta ordem`, "erro");
+    if (!doProduto.length) return;           // produto fora da ordem: ignorado
     const item = doProduto.find((i) => i.lidas < i.prevista) || doProduto[0];
     this.escolherItem(null, item.id);
     bipe("ok");
   },
   rfid(epc) {
     if (!this.ordem) return msg("Abra uma ordem de recebimento", "alerta");
-    if (!this.item()) return msg("Escolha o item antes de ler as etiquetas", "alerta");
+    if (!this.item()) {
+      const falta = this.ordem.itens.find((i) => i.lidas < i.prevista);
+      if (!falta) return;                     // tudo completo: leitura ignorada
+      this.itemId = falta.id; this.desenhar();
+    }
     // junta as leituras de ~0,25 s e manda de uma vez (online, sem esperar o operador)
     this.buffer.push(epc);
     clearTimeout(this.timer);
@@ -805,13 +813,9 @@ telas.entrada = {
     const rec = this.ordem.recebimento.id, itemId = this.itemId;
     try {
       const r = await api("POST", `/api/recebimentos/${rec}/leituras`, { item_id: itemId, epcs, origem: "COLETOR", meio: "RFID" });
-      const novas = r.tags.filter((t) => t.ok && !t.repetida).length, erros = r.tags.filter((t) => !t.ok);
-      const errosUnicos = [...new Set(erros.map((t) => t.erro))];
-      if (novas || erros.length) {
-        msg((novas ? `✓ ${novas} etiqueta(s) · ${r.sku} ${num(r.lidas)}/${num(r.prevista)}` : "") +
-          errosUnicos.map((e) => `\n✕ ${erros.filter((t) => t.erro === e).length} etiqueta(s): ${e}`).join(""),
-          erros.length ? (novas ? "alerta" : "erro") : "ok");
-      }
+      // etiqueta já em estoque, de outra ordem ou a mais: ignorada, o operador segue lendo
+      const novas = r.tags.filter((t) => t.ok && !t.repetida).length, ignoradas = r.tags.filter((t) => !t.ok).length;
+      if (novas) msg(`✓ ${novas} etiqueta(s) · ${r.sku} ${num(r.lidas)}/${num(r.prevista)}` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
       if (telaAtual === "entrada" && this.ordem?.recebimento.id === rec) await this.abrirOrdem(null, rec);
     } catch (e) { msg(e.message, "erro"); }
   },
@@ -880,9 +884,9 @@ telas.baixa = {
     if (!(q > 0)) return msg("Informe a quantidade", "alerta");
     await executar($("bxQtdBotao"), async () => {
       const r = await api("POST", "/api/baixas", { produto_id: this.produto.id, quantidade: q, motivo: $("bxMotivo").value, origem: "COLETOR", meio: "BARRAS" });
-      for (const l of r.lotes) this.baixadas.unshift({ epc: `${num(l.quantidade)} un. por código de barras`, ok: false, qtd: true, info: `${this.produto.sku} · lote ${l.lote}` });
+      for (const l of r.lotes) this.baixadas.unshift({ epc: `${num(l.quantidade)} un. por código de barras`, ok: false, qtd: true, info: `${this.produto.sku}${lotePonto(l.lote)}` });
       this.fecharQtd(); this.desenhar();
-      msg("✓ Baixa por FEFO: " + r.lotes.map((l) => `${num(l.quantidade)} do lote ${l.lote}`).join(", "));
+      msg("✓ Baixa por FEFO: " + r.lotes.map((l) => `${num(l.quantidade)}${l.lote !== "SEM-LOTE" ? " do" + loteTxt(l.lote) : ""}`).join(", "));
     });
   },
   rfid(epc) {
@@ -897,11 +901,9 @@ telas.baixa = {
     if (!epcs.length) return;
     try {
       const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo")?.value || "CONSUMO", origem: "COLETOR", meio: "RFID" });
-      for (const t of r.tags) this.baixadas.unshift(t.ok ? { epc: t.epc, ok: true, info: `${t.sku} · lote ${t.lote}` } : { epc: t.epc, ok: false, info: t.erro });
-      const ok = r.tags.filter((t) => t.ok).length, erros = r.tags.length - ok;
-      const avisos = [...new Set(r.tags.flatMap((t) => t.avisos || []))];
-      msg((ok ? `✓ ${ok} baixada(s)` : "") + (erros ? `${ok ? "\n" : ""}✕ ${erros} não baixada(s) (veja a lista)` : "") +
-        avisos.map((a) => "\n⚠ " + a).join(""), erros ? (ok ? "alerta" : "erro") : avisos.length ? "alerta" : "ok");
+      for (const t of r.tags.filter((x) => x.ok)) this.baixadas.unshift({ epc: t.epc, ok: true, info: `${t.sku}${lotePonto(t.lote)}` });
+      const ok = r.tags.filter((t) => t.ok).length, ignoradas = r.tags.length - ok;
+      if (ok) msg(`✓ ${ok} baixada(s)` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
       if (telaAtual === "baixa") this.desenhar();
     } catch (e) {
       epcs.forEach((x) => this.vistas.delete(x));   // falhou a rede: pode ler de novo
@@ -963,10 +965,15 @@ telas.inventario = {
           <div><div class="contador" style="color:var(--primaria)">${num(sobras)}</div><div class="fraco">sobrando</div></div>
         </div></div>
       <div class="card"><h2>Por produto e lote</h2><ul class="lista">
-        ${c.map((x) => `<li><div class="info"><b>${esc(x.sku)}</b> · lote ${esc(x.lote)}<div class="fraco">${esc(x.descricao)}</div>
+        ${c.map((x) => `<li><div class="info"><b>${esc(x.sku)}</b>${lotePonto(x.lote)}<div class="fraco">${esc(x.descricao)}</div>
             ${barraProgresso(Math.min(x.contado, x.sistema), x.sistema)}</div>
           <span class="qtd" style="color:${x.contado < x.sistema ? "var(--alerta)" : x.contado > x.sistema ? "var(--primaria)" : "var(--sucesso)"}">${num(x.contado)}/${num(x.sistema)}</span></li>`).join("")
           || `<li class="vazio">Nenhuma etiqueta em estoque</li>`}</ul></div>
+      <div class="card"><h2>Etiquetas <span class="dir fraco">vermelho = diferença</span></h2><ul class="lista">
+        ${(d.etiquetas || []).slice(0, 300).map((e) => `<li><div class="info">
+            <div class="mono" style="${e.situacao === "OK" ? "" : "color:var(--perigo);font-weight:700"}">${esc(e.epc)}</div>
+            <div class="fraco">${esc(e.sku)} · ${e.situacao === "OK" ? "lida" : e.situacao === "FALTA" ? "falta (não lida)" : "sobra (não estava em estoque)"}</div></div></li>`).join("")
+          || `<li class="vazio">Nenhuma etiqueta</li>`}</ul></div>
       ${this.confirmando ? `<div class="card" style="border-color:var(--alerta)"><h2>Finalizar inventário?</h2>
           <p style="margin:0 0 8px">O estoque passa a ser o que foi lido:<br>
             <b>${num(faltando)}</b> etiqueta(s) não lida(s) saem do estoque; <b>${num(sobras)}</b> achada(s) voltam.</p>
@@ -986,7 +993,7 @@ telas.inventario = {
     try {
       const r = await api("POST", `/api/inventarios/${id}/contagens`, { epcs, origem: "COLETOR", meio: "RFID" });
       const novas = r.tags.filter((t) => t.ok && !t.repetida).length, erros = r.tags.filter((t) => !t.ok).length;
-      if (novas || erros) msg((novas ? `✓ ${novas} etiqueta(s) contada(s)` : "") + (erros ? `${novas ? "\n" : ""}✕ ${erros} não cadastrada(s) no sistema` : ""), erros ? "alerta" : "ok");
+      if (novas) msg(`✓ ${novas} etiqueta(s) contada(s)` + (erros ? ` · ${erros} ignorada(s)` : ""));
       if (telaAtual === "inventario" && this.inv?.inventario.id === id && !this.confirmando) await this.abrirInv(null, id);
     } catch (e) { msg(e.message, "erro"); }
   },
@@ -1025,7 +1032,7 @@ telas.localizar = {
       const desenhar = () => {
         const f = $("lcBusca").value.trim().toUpperCase();
         $("lcLista").innerHTML = tags.filter((t) => !f || [t.sku, t.descricao, t.lote, t.epc].some((v) => String(v).toUpperCase().includes(f))).slice(0, 80)
-          .map((t) => `<li class="clicavel" data-acao="escolher" data-valor="${esc(t.epc)}"><div class="info"><b>${esc(t.sku)}</b> · lote ${esc(t.lote)}
+          .map((t) => `<li class="clicavel" data-acao="escolher" data-valor="${esc(t.epc)}"><div class="info"><b>${esc(t.sku)}</b>${lotePonto(t.lote)}
             <div class="mono fraco">${esc(t.epc)}</div></div></li>`).join("") || `<li class="vazio">Nenhuma etiqueta</li>`;
       };
       $("lcBusca").addEventListener("input", desenhar);
@@ -1041,7 +1048,7 @@ telas.localizar = {
     try { app.localizar(epc); } catch { return msg("Atualize o ColetorWMS.apk para usar o Localizar", "erro"); }
     definirGatilho("rfid");
     let info = "";
-    try { const t = await api("GET", "/api/tags/" + encodeURIComponent(epc)); info = `${t.sku} · lote ${t.lote}`; } catch { info = "etiqueta não cadastrada no sistema"; }
+    try { const t = await api("GET", "/api/tags/" + encodeURIComponent(epc)); info = `${t.sku}${lotePonto(t.lote)}`; } catch { info = "etiqueta não cadastrada no sistema"; }
     $("lcCorpo").innerHTML = `<div class="card" style="text-align:center">
         <div class="mono">${esc(epc)}</div><div class="fraco">${esc(info)}</div>
         <div class="radar"><div class="radar-barra" id="lcBarra"></div></div>

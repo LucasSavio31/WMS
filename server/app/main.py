@@ -633,7 +633,8 @@ def ver_inventario(inventario_id: int, con: Con = Depends(conexao)):
         """SELECT c.*, p.sku, p.descricao, l.lote FROM contagens c
            JOIN lotes l ON l.id=c.lote_id JOIN produtos p ON p.id=l.produto_id
            WHERE c.inventario_id=? ORDER BY c.id DESC""", (inventario_id,)))
-    return {"inventario": dict(inv), "confronto": estoque.confrontar(con, inventario_id), "contagens": contagens}
+    return {"inventario": dict(inv), "confronto": estoque.confrontar(con, inventario_id), "contagens": contagens,
+            "etiquetas": estoque.etiquetas_inventario(con, inventario_id)}
 
 
 @app.post("/api/inventarios/{inventario_id}/contagens")

@@ -27,6 +27,11 @@ def fmt(q) -> str:
     return f"{q:g}"
 
 
+def nome_item(sku, lote) -> str:
+    """"LEITE lote L1", ou só "LEITE" quando não se usa lote (SEM-LOTE)."""
+    return sku if not lote or lote == "SEM-LOTE" else f"{sku} lote {lote}"
+
+
 # ----------------------------------------------------------------- validações
 def normalizar_data(texto):
     """Aceita AAAA-MM-DD (tela web) ou DD/MM/AAAA (digitado no coletor)."""
@@ -139,6 +144,7 @@ def excluir_produto(con, produto_id):
     con.execute(f"DELETE FROM reservas WHERE lote_id IN ({lotes}) OR item_id IN ({itens})", args * 2)
     con.execute(f"DELETE FROM contagens WHERE lote_id IN ({lotes})", args)
     con.execute(f"DELETE FROM inventario_resultado WHERE lote_id IN ({lotes})", args)
+    con.execute(f"DELETE FROM inventario_etiquetas WHERE lote_id IN ({lotes})", args)
     con.execute(f"DELETE FROM movimentos WHERE lote_id IN ({lotes})", args)
     con.execute(f"DELETE FROM tags WHERE lote_id IN ({lotes})", args)
     n_lotes = con.execute("DELETE FROM lotes WHERE produto_id=?", args).rowcount
@@ -158,7 +164,7 @@ def limpar_tudo(con, manter_cadastros=False):
 
     Com manter_cadastros, apaga só a movimentação e deixa produtos e endereços.
     """
-    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventario_resultado", "inventarios", "recebimento_leituras",
+    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventario_resultado", "inventario_etiquetas", "inventarios", "recebimento_leituras",
                "recebimento_itens", "recebimentos", "movimentos", "tags", "lotes"]
     if not manter_cadastros:
         tabelas += ["produtos", "enderecos"]
@@ -186,7 +192,7 @@ def movimentar(con, tipo, lote_id, quantidade, origem, meio, motivo=None, epc=No
     """Altera o saldo de um lote e grava o histórico."""
     lote = buscar_lote(con, lote_id)
     if lote["quantidade"] + quantidade < 0:
-        raise ErroEstoque(f"Saldo insuficiente no lote {lote['lote']} (saldo {fmt(lote['quantidade'])})")
+        raise ErroEstoque(f"Saldo insuficiente{'' if lote['lote'] == 'SEM-LOTE' else ' no lote ' + lote['lote']} (saldo {fmt(lote['quantidade'])})")
     con.execute("UPDATE lotes SET quantidade = quantidade + ? WHERE id=?", (quantidade, lote_id))
     registrar(con, tipo, lote_id, quantidade, origem, meio, motivo, epc, documento)
 
@@ -435,10 +441,38 @@ def confrontar(con, inventario_id):
            ORDER BY e.codigo, p.sku, l.validade""", (inventario_id,)))
 
 
+def etiquetas_inventario(con, inventario_id):
+    """Cada etiqueta do inventário RFID: OK, FALTA (não lida) ou SOBRA (lida sem estar em estoque).
+
+    Divergências primeiro. Inventário fechado mostra a situação guardada ao fechar.
+    """
+    campos = """p.sku, p.descricao, l.lote,
+                CASE situacao WHEN 'FALTA' THEN 0 WHEN 'SOBRA' THEN 1 ELSE 2 END AS ordem"""
+    guardadas = db.linhas(con.execute(
+        f"""SELECT e.epc, e.situacao, NULL AS contagem_id, {campos}
+            FROM inventario_etiquetas e JOIN lotes l ON l.id=e.lote_id JOIN produtos p ON p.id=l.produto_id
+            WHERE e.inventario_id=? ORDER BY ordem, p.sku, e.epc""", (inventario_id,)))
+    if guardadas or not so_rfid(con, inventario_id):
+        return guardadas
+    return db.linhas(con.execute(
+        f"""SELECT * FROM (
+              SELECT t.epc, c.id AS contagem_id, t.lote_id,
+                     CASE WHEN c.id IS NULL THEN 'FALTA' WHEN t.status='ATIVA' THEN 'OK' ELSE 'SOBRA' END AS situacao,
+                     p.sku, p.descricao, l.lote
+              FROM tags t JOIN lotes l ON l.id=t.lote_id JOIN produtos p ON p.id=l.produto_id
+              LEFT JOIN contagens c ON c.epc=t.epc AND c.inventario_id=?
+              WHERE t.status='ATIVA' OR c.id IS NOT NULL)
+            ORDER BY CASE situacao WHEN 'FALTA' THEN 0 WHEN 'SOBRA' THEN 1 ELSE 2 END, sku, epc""",
+        (inventario_id,)))
+
+
 def guardar_resultado(con, inventario_id):
     for c in confrontar(con, inventario_id):
         con.execute("INSERT OR REPLACE INTO inventario_resultado (inventario_id, lote_id, sistema, contado) VALUES (?,?,?,?)",
                     (inventario_id, c["lote_id"], c["sistema"], c["contado"]))
+    for e in etiquetas_inventario(con, inventario_id):
+        con.execute("INSERT OR REPLACE INTO inventario_etiquetas (inventario_id, epc, lote_id, situacao) VALUES (?,?,?,?)",
+                    (inventario_id, e["epc"], e["lote_id"], e["situacao"]))
 
 
 def fechar_inventario(con, inventario_id, origem="PC"):
@@ -583,7 +617,7 @@ def criar_recebimento(con, itens, documento=None, fornecedor=None, endereco_id=N
         lote = (item.get("lote") or "").strip().upper() or "SEM-LOTE"
         validar_quantidade(p, item.get("quantidade"))
         if any(l[0] == p["id"] and l[1] == lote for l in linhas):
-            raise ErroEstoque(f"{p['sku']} lote {lote} repetido no recebimento")
+            raise ErroEstoque(f"{nome_item(p['sku'], lote)} repetido no recebimento")
         linhas.append((p["id"], lote, normalizar_data(item.get("validade")), item["quantidade"]))
     endereco = buscar_endereco(con, endereco_id)
     numero = (numero or "").strip().upper()
@@ -654,7 +688,10 @@ def ler_recebimento(con, recebimento_id, item_id=None, epcs=(), quantidade=None,
             elif tag and tag["status"] == "ATIVA":
                 erro = "já está em estoque"
             elif lidas + 1 > prevista:
-                erro = f"{item['sku']} lote {item['lote']} já completo ({fmt(prevista)})"
+                # etiqueta a mais (item já completo): ignorada, não é erro
+                resultado.append({"epc": epc, "ok": False, "excedente": True,
+                                  "erro": f"{nome_item(item['sku'], item['lote'])} já completo ({fmt(prevista)})"})
+                continue
             if erro:
                 resultado.append({"epc": epc, "ok": False, "erro": erro})
                 continue
@@ -666,7 +703,7 @@ def ler_recebimento(con, recebimento_id, item_id=None, epcs=(), quantidade=None,
         p = buscar_produto(con, item["produto_id"])
         validar_quantidade(p, quantidade)
         if lidas + quantidade > prevista:
-            raise ErroEstoque(f"{item['sku']} lote {item['lote']}: faltam {fmt(prevista - lidas)}, "
+            raise ErroEstoque(f"{nome_item(item['sku'], item['lote'])}: faltam {fmt(prevista - lidas)}, "
                               f"não dá para receber {fmt(quantidade)}")
         con.execute("""INSERT INTO recebimento_leituras (recebimento_id, item_id, quantidade, origem, meio, data_hora)
                        VALUES (?,?,?,?,?,?)""", (rec["id"], item["id"], quantidade, origem, meio, db.agora()))
@@ -703,7 +740,7 @@ def finalizar_recebimento(con, recebimento_id, origem="PC"):
                     meio="BARRAS", endereco_id=rec["endereco_id"], documento=documento)
             entradas += 1
         if item["lidas"] != item["prevista"]:
-            divergencias.append(f"{item['sku']} lote {item['lote']}: recebido {fmt(item['lidas'])} de {fmt(item['prevista'])}")
+            divergencias.append(f"{nome_item(item['sku'], item['lote'])}: recebido {fmt(item['lidas'])} de {fmt(item['prevista'])}")
     con.execute("UPDATE recebimentos SET status='FINALIZADO', finalizado_em=? WHERE id=?", (db.agora(), recebimento_id))
     return {"numero": rec["numero"], "entradas": entradas, "divergencias": divergencias}
 

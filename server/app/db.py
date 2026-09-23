@@ -98,6 +98,16 @@ CREATE TABLE IF NOT EXISTS inventario_resultado (
     PRIMARY KEY (inventario_id, lote_id)
 );
 
+-- Situação de cada etiqueta no inventário fechado: OK (lida e em estoque),
+-- FALTA (em estoque e não lida) ou SOBRA (lida e não estava em estoque).
+CREATE TABLE IF NOT EXISTS inventario_etiquetas (
+    inventario_id INTEGER NOT NULL REFERENCES inventarios(id),
+    epc           TEXT NOT NULL,
+    lote_id       INTEGER NOT NULL REFERENCES lotes(id),
+    situacao      TEXT NOT NULL,
+    PRIMARY KEY (inventario_id, epc)
+);
+
 -- Pedidos de expedição (saída para cliente)
 CREATE TABLE IF NOT EXISTS pedidos (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

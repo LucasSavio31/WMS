@@ -278,7 +278,7 @@ def test_ordem_de_recebimento_online(api):
     # Coletor: bipa o produto (acha o item) e lê as etiquetas; cada leitura grava na hora
     r = api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "7890000000001", "epcs": ["A1", "A2", "A1", "A3"]})
     tags = {t["epc"]: t for t in r.json()["tags"]}
-    assert tags["A1"]["ok"] and tags["A2"]["ok"] and not tags["A3"]["ok"] and "completo" in tags["A3"]["erro"]
+    assert tags["A1"]["ok"] and tags["A2"]["ok"] and not tags["A3"]["ok"] and tags["A3"]["excedente"]
     assert r.json()["lidas"] == 2
     again = api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "7890000000001", "epcs": ["A1"]}).json()
     assert again["tags"][0]["repetida"]
@@ -297,6 +297,7 @@ def test_ordem_de_recebimento_online(api):
 
     f = api.post(f"/api/recebimentos/{rec}/finalizar").json()
     assert f["divergencias"] == ["CAFE lote C1: recebido 4 de 5"]
+    assert not r.json()["tags"][0].get("excedente")
     assert saldo(api, "L1") == 2 and saldo(api, "C1") == 4
     assert api.get("/api/tags/A1").json()["status"] == "ATIVA"
     assert all(m["documento"] == "NF 900" for m in api.get("/api/movimentos").json() if m["tipo"] == "ENTRADA")
@@ -329,8 +330,10 @@ def test_inventario_por_rfid_e_estorno(api):
     # inventário lendo etiquetas: T1, T2 e T3 (baixada, mas achada); T4 não foi lida
     inv = api.post("/api/inventarios", json={"nome": "RFID"}).json()["id"]
     api.post(f"/api/inventarios/{inv}/contagens", json={"epcs": ["T1", "T2", "T3"], "origem": "COLETOR", "meio": "RFID"})
-    conf = {c["lote"]: c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"]}
+    d = api.get(f"/api/inventarios/{inv}").json()
+    conf = {c["lote"]: c for c in d["confronto"]}
     assert "CX" not in conf                                               # sem etiqueta: fora da conta
+    assert [(e["epc"], e["situacao"]) for e in d["etiquetas"]] == [("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
     assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
     r = api.post(f"/api/inventarios/{inv}/fechar").json()
     assert (r["faltas"], r["sobras"]) == (1, 1)
@@ -338,6 +341,8 @@ def test_inventario_por_rfid_e_estorno(api):
     api.post("/api/baixas", json={"epcs": ["T1"]})
     conf = {c["lote"]: c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"]}
     assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
+    guardadas = [(e["epc"], e["situacao"]) for e in api.get(f"/api/inventarios/{inv}").json()["etiquetas"]]
+    assert guardadas == [("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
     api.post("/api/tags/T1/estornar")
     assert api.get("/api/tags/T4").json()["status"] == "BAIXADA" and api.get("/api/tags/T3").json()["status"] == "ATIVA"
     assert saldo(api, "SEM-LOTE") == 3 and saldo(api, "CX") == 5
