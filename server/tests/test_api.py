@@ -263,3 +263,47 @@ def test_limpar_tudo(api):
     assert produto(api) == 1
     api.post("/api/entradas", json={"produto_id": 1, "lote": "N", "quantidade": 2})
     assert api.get("/api/resumo").json()["unidades"] == 2
+
+
+def test_ordem_de_recebimento_online(api):
+    pid = produto(api)
+    cafe = produto(api, sku="CAFE", ean="7890000000002")
+    r = api.post("/api/recebimentos", json={"documento": "NF 900", "fornecedor": "Laticínios X", "itens": [
+        {"produto_id": pid, "lote": "l1", "validade": "31/12/2030", "quantidade": 2},
+        {"codigo": "CAFE", "lote": "C1", "quantidade": 5}]})
+    assert r.status_code == 200, r.text
+    rec = r.json()["id"]
+    assert r.json()["numero"] == f"REC-{rec:05d}"
+
+    # Coletor: bipa o produto (acha o item) e lê as etiquetas; cada leitura grava na hora
+    r = api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "7890000000001", "epcs": ["A1", "A2", "A1", "A3"]})
+    tags = {t["epc"]: t for t in r.json()["tags"]}
+    assert tags["A1"]["ok"] and tags["A2"]["ok"] and not tags["A3"]["ok"] and "completo" in tags["A3"]["erro"]
+    assert r.json()["lidas"] == 2
+    again = api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "7890000000001", "epcs": ["A1"]}).json()
+    assert again["tags"][0]["repetida"]
+    # Item sem etiqueta: quantidade; não pode passar do previsto
+    assert api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "CAFE", "quantidade": 6, "meio": "BARRAS"}).status_code == 400
+    assert api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "CAFE", "quantidade": 4, "meio": "BARRAS"}).status_code == 200
+
+    # Etiqueta de outra ordem aberta é recusada
+    rec2 = api.post("/api/recebimentos", json={"itens": [{"produto_id": pid, "lote": "L9", "quantidade": 3}]}).json()["id"]
+    r = api.post(f"/api/recebimentos/{rec2}/leituras", json={"epcs": ["A1", "B1"]})   # item único: escolhido sozinho
+    assert [t["ok"] for t in r.json()["tags"]] == [False, True]
+
+    d = api.get(f"/api/recebimentos/{rec}").json()
+    assert [(i["sku"], i["lidas"], i["prevista"]) for i in d["itens"]] == [("LEITE", 2, 2), ("CAFE", 4, 5)]
+    assert len(d["leituras"]) == 3 and api.get("/api/resumo").json()["recebimentos_abertos"] == 2
+
+    f = api.post(f"/api/recebimentos/{rec}/finalizar").json()
+    assert f["divergencias"] == ["CAFE lote C1: recebido 4 de 5"]
+    assert saldo(api, "L1") == 2 and saldo(api, "C1") == 4
+    assert api.get("/api/tags/A1").json()["status"] == "ATIVA"
+    assert all(m["documento"] == "NF 900" for m in api.get("/api/movimentos").json() if m["tipo"] == "ENTRADA")
+    assert api.post(f"/api/recebimentos/{rec}/leituras", json={"codigo": "CAFE", "quantidade": 1}).status_code == 400
+    # Agora A1 está em estoque: não entra em outra ordem
+    r = api.post(f"/api/recebimentos/{rec2}/leituras", json={"epcs": ["A2"]})
+    assert "estoque" in r.json()["tags"][0]["erro"]
+    assert api.post(f"/api/recebimentos/{rec2}/cancelar").json()["status"] == "CANCELADO"
+    api.post("/api/limpar-tudo", json={"manter_cadastros": True})
+    assert api.get("/api/recebimentos").json() == []

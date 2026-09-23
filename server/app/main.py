@@ -138,6 +138,7 @@ def resumo(con: Con = Depends(conexao)):
         "vencidos": sum(1 for v in validade if v["dias_para_vencer"] < 0),
         "a_vencer": sum(1 for v in validade if v["dias_para_vencer"] >= 0),
         "pedidos_abertos": valor("SELECT COUNT(*) FROM pedidos WHERE status IN ('ABERTO','SEPARANDO')"),
+        "recebimentos_abertos": valor("SELECT COUNT(*) FROM recebimentos WHERE status='ABERTO'"),
         "inventarios_abertos": valor("SELECT COUNT(*) FROM inventarios WHERE status='ABERTO'"),
         "entradas_hoje": valor("SELECT SUM(quantidade) FROM movimentos WHERE tipo='ENTRADA' AND data_hora >= ?", hoje),
         "saidas_hoje": -valor("SELECT SUM(quantidade) FROM movimentos WHERE tipo='BAIXA' AND data_hora >= ?", hoje),
@@ -448,6 +449,81 @@ def baixa(b: Baixa, con: Con = Depends(conexao)):
         return estoque.baixa_lote(con, b.lote_id, b.quantidade, b.motivo, b.origem, b.meio, b.documento)
     p = estoque.buscar_produto(con, b.produto_id, b.codigo)
     return estoque.baixa_quantidade(con, p["id"], b.quantidade, b.motivo, b.origem, b.meio, b.documento)
+
+
+# ================================================================ ordens de recebimento
+class ItemRecebimento(BaseModel):
+    produto_id: Optional[int] = None
+    codigo: Optional[str] = None
+    lote: str = ""
+    validade: Optional[str] = None
+    quantidade: float
+
+
+class NovoRecebimento(BaseModel):
+    numero: Optional[str] = None
+    documento: Optional[str] = None       # nota fiscal
+    fornecedor: Optional[str] = None
+    endereco_id: Optional[int] = None
+    itens: list[ItemRecebimento]
+
+
+class LeituraRecebimento(BaseModel):
+    item_id: Optional[int] = None         # ou codigo (EAN/SKU do produto) para achar o item
+    codigo: Optional[str] = None
+    epcs: list[str] = []                  # etiquetas RFID lidas
+    quantidade: Optional[float] = None    # ou quantidade (item sem etiqueta)
+    origem: Origem = "COLETOR"
+    meio: Meio = "RFID"
+
+
+@app.get("/api/recebimentos")
+def listar_recebimentos(con: Con = Depends(conexao)):
+    return db.linhas(con.execute(
+        """SELECT r.*, e.codigo AS endereco,
+                  (SELECT COUNT(*) FROM recebimento_itens i WHERE i.recebimento_id=r.id) AS itens,
+                  (SELECT COALESCE(SUM(prevista), 0) FROM recebimento_itens i WHERE i.recebimento_id=r.id) AS prevista,
+                  (SELECT COALESCE(SUM(quantidade), 0) FROM recebimento_leituras l WHERE l.recebimento_id=r.id) AS lidas
+           FROM recebimentos r LEFT JOIN enderecos e ON e.id=r.endereco_id
+           ORDER BY r.status <> 'ABERTO', r.id DESC"""))
+
+
+@app.post("/api/recebimentos")
+def criar_recebimento(r: NovoRecebimento, con: Con = Depends(conexao)):
+    return estoque.criar_recebimento(con, [i.model_dump() for i in r.itens], r.documento, r.fornecedor,
+                                     r.endereco_id, r.numero)
+
+
+@app.get("/api/recebimentos/{recebimento_id}")
+def ver_recebimento(recebimento_id: int, con: Con = Depends(conexao)):
+    rec = estoque.buscar_recebimento(con, recebimento_id)
+    endereco = con.execute("SELECT codigo FROM enderecos WHERE id=?", (rec["endereco_id"],)).fetchone()
+    leituras = db.linhas(con.execute(
+        """SELECT l.*, p.sku, i.lote FROM recebimento_leituras l
+           JOIN recebimento_itens i ON i.id=l.item_id JOIN produtos p ON p.id=i.produto_id
+           WHERE l.recebimento_id=? ORDER BY l.id DESC""", (recebimento_id,)))
+    return {"recebimento": {**dict(rec), "endereco": endereco["codigo"] if endereco else None},
+            "itens": estoque.itens_recebimento(con, recebimento_id), "leituras": leituras}
+
+
+@app.post("/api/recebimentos/{recebimento_id}/leituras")
+def ler_recebimento(recebimento_id: int, l: LeituraRecebimento, con: Con = Depends(conexao)):
+    return estoque.ler_recebimento(con, recebimento_id, l.item_id, l.epcs, l.quantidade, l.codigo, l.origem, l.meio)
+
+
+@app.delete("/api/recebimentos/{recebimento_id}/leituras/{leitura_id}")
+def remover_leitura_recebimento(recebimento_id: int, leitura_id: int, con: Con = Depends(conexao)):
+    return estoque.remover_leitura_recebimento(con, recebimento_id, leitura_id)
+
+
+@app.post("/api/recebimentos/{recebimento_id}/finalizar")
+def finalizar_recebimento(recebimento_id: int, con: Con = Depends(conexao)):
+    return estoque.finalizar_recebimento(con, recebimento_id)
+
+
+@app.post("/api/recebimentos/{recebimento_id}/cancelar")
+def cancelar_recebimento(recebimento_id: int, con: Con = Depends(conexao)):
+    return estoque.cancelar_recebimento(con, recebimento_id)
 
 
 # ================================================================ pedidos (expedição)

@@ -107,6 +107,42 @@ CREATE TABLE IF NOT EXISTS pedido_itens (
     quantidade REAL NOT NULL
 );
 
+-- Ordem de recebimento (pré-recebimento): o PC cadastra o que vai chegar
+-- (nota fiscal, itens, lotes, quantidades) e o coletor lê as etiquetas.
+CREATE TABLE IF NOT EXISTS recebimentos (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero        TEXT NOT NULL UNIQUE,
+    documento     TEXT,                   -- nota fiscal
+    fornecedor    TEXT,
+    endereco_id   INTEGER REFERENCES enderecos(id),   -- onde os lotes novos entram (padrão: doca)
+    status        TEXT NOT NULL DEFAULT 'ABERTO',     -- ABERTO | FINALIZADO | CANCELADO
+    criado_em     TEXT NOT NULL,
+    finalizado_em TEXT
+);
+
+CREATE TABLE IF NOT EXISTS recebimento_itens (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    recebimento_id INTEGER NOT NULL REFERENCES recebimentos(id),
+    produto_id     INTEGER NOT NULL REFERENCES produtos(id),
+    lote           TEXT NOT NULL,
+    validade       TEXT,
+    prevista       REAL NOT NULL          -- quantidade esperada
+);
+
+-- Cada leitura do coletor fica gravada na hora (online): uma etiqueta RFID
+-- (quantidade 1) ou uma quantidade contada por código de barras.
+CREATE TABLE IF NOT EXISTS recebimento_leituras (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    recebimento_id INTEGER NOT NULL REFERENCES recebimentos(id),
+    item_id        INTEGER NOT NULL REFERENCES recebimento_itens(id),
+    epc            TEXT,
+    quantidade     REAL NOT NULL,
+    origem         TEXT NOT NULL,
+    meio           TEXT NOT NULL,
+    data_hora      TEXT NOT NULL,
+    UNIQUE (recebimento_id, epc)
+);
+
 -- Reserva: quanto de cada lote está separado para um pedido (escolhido por FEFO).
 -- Quantidade reservada não pode ser usada por outra baixa.
 CREATE TABLE IF NOT EXISTS reservas (

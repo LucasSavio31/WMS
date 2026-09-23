@@ -130,6 +130,11 @@
   .passos span { font-size: 12px; padding: 4px 10px; border-radius: 12px; background: var(--fundo-neutro); color: var(--texto-2); }
   .passos span.feito { background: var(--fundo-sucesso); color: var(--sucesso); }
   .passos span.atual { background: var(--primaria); color: #fff; }
+  .progresso { height: 8px; border-radius: 4px; background: var(--fundo-neutro); overflow: hidden; min-width: 80px; }
+  .progresso > span { display: block; height: 100%; background: var(--primaria); border-radius: 4px; }
+  .progresso.completo > span { background: var(--sucesso); }
+  tr.nova td { animation: destaque 1.5s ease-out; }
+  @keyframes destaque { from { background: var(--fundo-sucesso); } }
   .lista-simples { list-style: none; padding: 0; margin: 0; }
   .lista-simples li { padding: 8px 0; border-bottom: 1px solid var(--borda); display: flex; gap: 8px; align-items: center; }
   .lista-simples li:last-child { border-bottom: none; }
@@ -179,7 +184,8 @@
       <a href="#painel" data-pagina="painel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>Painel</a>
       <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Posição de estoque</a>
       <div class="grupo">Operações</div>
-      <a href="#recebimento" data-pagina="recebimento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12 M7 10l5 5 5-5 M4 21h16"/></svg>Recebimento<span class="contador" id="cntDoca"></span></a>
+      <a href="#ordens" data-pagina="ordens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M12 11v6 M9 14l3 3 3-3"/></svg>Ordens de recebimento<span class="contador" id="cntRec"></span></a>
+      <a href="#recebimento" data-pagina="recebimento"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12 M7 10l5 5 5-5 M4 21h16"/></svg>Entrada avulsa / doca<span class="contador" id="cntDoca"></span></a>
       <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa de estoque</a>
       <a href="#expedicao" data-pagina="expedicao"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h11v10H3z M14 10h4l3 3v4h-7 M7 20a2 2 0 100-4 2 2 0 000 4z M17 20a2 2 0 100-4 2 2 0 000 4z"/></svg>Pedidos / Expedição<span class="contador" id="cntPedidos"></span></a>
       <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
@@ -249,6 +255,50 @@
           <thead><tr><th>Lote</th><th>Validade</th><th>Endereço</th><th>Status</th><th class="num">Saldo</th><th class="num">Reservado</th><th class="num">Tags RFID</th><th class="num">Disponível*</th><th></th></tr></thead>
           <tbody id="tabEstoque"></tbody></table></div>
         <p class="fraco">* Disponível para baixa por quantidade = saldo − reservado para pedidos − unidades com tag RFID (essas saem lendo a tag). Lotes bloqueados ou vencidos não entram no FEFO.</p>
+      </section>
+
+      <!-- =================================================== ORDENS DE RECEBIMENTO -->
+      <section class="pagina" id="ordens" data-titulo="Ordens de recebimento" data-sub="Cadastre o que vai chegar; o coletor lê as etiquetas e cada leitura aparece aqui na hora">
+        <div class="grade g-form">
+          <div class="nao-imprimir">
+            <div class="card">
+              <h2>Nova ordem de recebimento</h2>
+              <form id="formOrdem" autocomplete="off">
+                <div class="campos">
+                  <label class="campo"><span>Nota fiscal</span><input id="orDoc" placeholder="Ex.: NF 12345"></label>
+                  <label class="campo"><span>Nº da ordem</span><input id="orNumero" placeholder="Automático"></label>
+                  <label class="campo meio"><span>Fornecedor</span><input id="orFornecedor"></label>
+                  <label class="campo"><span>Endereço de entrada</span><select id="orEndereco" data-enderecos></select></label>
+                </div>
+                <div class="card-titulo" style="margin:14px 0 8px">Itens esperados</div>
+                <div class="campos">
+                  <label class="campo largo"><span>Código de barras / SKU</span><input id="orCodigo" class="leitor" placeholder="Bipe e tecle Enter"></label>
+                  <label class="campo largo"><span>Produto</span><select id="orProduto" data-produtos="ativos"></select></label>
+                  <label class="campo"><span>Lote</span><input id="orLote" style="text-transform:uppercase"></label>
+                  <label class="campo"><span>Validade</span><input id="orValidade" type="date"></label>
+                  <label class="campo"><span>Quantidade</span><input id="orQtd" type="number" min="0" step="any"></label>
+                </div>
+                <div class="botoes"><button type="button" id="orAdicionar">+ Adicionar item</button></div>
+                <div class="tabela" style="margin-top:10px"><table>
+                  <thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Qtd</th><th></th></tr></thead>
+                  <tbody id="tabOrdemNova"></tbody></table></div>
+                <div class="botoes">
+                  <button class="primario" type="submit">Criar ordem</button>
+                  <button type="reset">Limpar</button>
+                </div>
+              </form>
+            </div>
+            <div class="card">
+              <div class="card-titulo">Ordens
+                <span class="acoes"><select id="orFiltro" style="width:auto">
+                  <option value="ABERTO">Abertas</option><option value="">Todas</option>
+                  <option value="FINALIZADO">Finalizadas</option><option value="CANCELADO">Canceladas</option>
+                </select></span></div>
+              <ul class="lista-simples" id="listaOrdens"></ul>
+            </div>
+          </div>
+          <div class="card" id="ordemDetalhe"><p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p></div>
+        </div>
       </section>
 
       <!-- =================================================== RECEBIMENTO -->
@@ -719,6 +769,7 @@ async function carregarPainel() {
     kpi("Entradas hoje", num(r.entradas_hoje), "sucesso", "#recebimento") +
     kpi("Saídas hoje", num(r.saidas_hoje), "", "#movimentos") +
     kpi("Lotes na doca (armazenar)", num(r.na_doca), r.na_doca ? "alerta" : "", "#recebimento") +
+    kpi("Recebimentos abertos", num(r.recebimentos_abertos), r.recebimentos_abertos ? "alerta" : "", "#ordens") +
     kpi("Pedidos em aberto", num(r.pedidos_abertos), r.pedidos_abertos ? "alerta" : "", "#expedicao") +
     kpi("Lotes vencidos", num(r.vencidos), r.vencidos ? "perigo" : "", "#estoque") +
     kpi("Vencem em 30 dias", num(r.a_vencer), r.a_vencer ? "alerta" : "", "#estoque") +
@@ -736,6 +787,7 @@ async function carregarPainel() {
 }
 function contadoresMenu(r) {
   $("cntDoca").textContent = r.na_doca || "";
+  $("cntRec").textContent = r.recebimentos_abertos || "";
   $("cntPedidos").textContent = r.pedidos_abertos || "";
   $("cntInv").textContent = r.inventarios_abertos || "";
 }
@@ -947,6 +999,119 @@ async function carregarRecebimento() {
       <td>${horaBR(m.data_hora)}</td><td>${esc(m.sku)} <span class="fraco">${esc(m.descricao)}</span></td><td>${esc(m.lote)}</td>
       <td class="num pos">+${num(m.quantidade)}</td><td>${esc(m.documento)}</td><td class="fraco">${esc(m.origem)} · ${esc(m.meio)}</td></tr>`).join("")
     || vazio(6, "Nenhuma entrada hoje");
+}
+
+// ======================================================================= ordens de recebimento
+let itensNovaOrdem = [], ordens = [], ordemAtual = null, leiturasVistas = null;
+ligarLeitor($("orCodigo"), $("orProduto"), () => $("orLote").focus());
+$("orProduto").addEventListener("change", () => ajustarPasso($("orQtd"), $("orProduto").value));
+function adicionarItemOrdem() {
+  const p = produtoPorId($("orProduto").value), qtd = Number($("orQtd").value), lote = $("orLote").value.trim().toUpperCase();
+  if (!p) return toast("Escolha o produto do item", "erro");
+  if (!lote) return toast("Informe o lote do item", "erro");
+  if (!(qtd > 0)) return toast("Informe a quantidade esperada", "erro");
+  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === lote)) return toast(`${p.sku} lote ${lote} já está na lista`, "erro");
+  itensNovaOrdem.push({ produto_id: p.id, lote, validade: $("orValidade").value || null, quantidade: qtd });
+  ["orCodigo", "orProduto", "orLote", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
+  desenharItensOrdem();
+  $("orCodigo").focus();
+}
+$("orAdicionar").addEventListener("click", adicionarItemOrdem);
+$("orQtd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); adicionarItemOrdem(); } });
+function desenharItensOrdem() {
+  $("tabOrdemNova").innerHTML = itensNovaOrdem.map((i, n) => {
+    const p = produtoPorId(i.produto_id);
+    return `<tr><td>${esc(p.sku)} <span class="fraco">${esc(p.descricao)}</span></td><td>${esc(i.lote)}</td><td>${dataBR(i.validade)}</td>
+      <td class="num">${num(i.quantidade)} ${esc(p.unidade)}</td>
+      <td class="acoes"><button type="button" class="link perigo-texto" onclick="itensNovaOrdem.splice(${n},1);desenharItensOrdem()">remover</button></td></tr>`;
+  }).join("") || vazio(5, "Nenhum item adicionado");
+}
+aoEnviar($("formOrdem"), async () => {
+  if (!itensNovaOrdem.length) throw new Error("Adicione pelo menos um item");
+  const r = await api("POST", "/api/recebimentos", { documento: $("orDoc").value, numero: $("orNumero").value,
+    fornecedor: $("orFornecedor").value, endereco_id: Number($("orEndereco").value) || null, itens: itensNovaOrdem });
+  toast(`Ordem ${r.numero} criada. No coletor: Recebimento → ${r.numero}`);
+  ordemAtual = r.id; leiturasVistas = null;
+  await carregarOrdens();
+});
+$("formOrdem").addEventListener("reset", () => setTimeout(() => {
+  itensNovaOrdem = []; desenharItensOrdem(); $("orEndereco").value = enderecoDoca(); $("orDoc").focus();
+}));
+$("orFiltro").addEventListener("change", desenharListaOrdens);
+
+async function carregarOrdens() {
+  ordens = await api("GET", "/api/recebimentos");
+  desenharListaOrdens();
+  desenharItensOrdem();
+  if (ordemAtual) await carregarOrdem(ordemAtual);
+}
+const barra = (lidas, prevista) => `<div class="progresso ${lidas >= prevista ? "completo" : ""}"><span style="width:${Math.min(100, prevista ? (100 * lidas) / prevista : 0)}%"></span></div>`;
+function desenharListaOrdens() {
+  const f = $("orFiltro").value;
+  const lista = ordens.filter((o) => !f || o.status === f);
+  $("listaOrdens").innerHTML = lista.map((o) => `<li class="item-lista ${o.id === ordemAtual ? "ativo" : ""}" onclick="carregarOrdem(${o.id})" style="display:block">
+      <div style="display:flex;gap:8px;align-items:center"><b>${esc(o.numero)}</b>${o.documento ? " · " + esc(o.documento) : ""}
+        <span style="margin-left:auto">${seloStatus(o.status === "ABERTO" ? "ABERTO" : o.status === "FINALIZADO" ? "FECHADO" : o.status)}</span></div>
+      <div class="fraco">${esc(o.fornecedor || "sem fornecedor")} · ${o.itens} item(ns) · ${num(o.lidas)} de ${num(o.prevista)}</div>
+      ${o.status === "ABERTO" ? barra(o.lidas, o.prevista) : ""}</li>`).join("")
+    || `<li class="vazio">Nenhuma ordem ${f === "ABERTO" ? "aberta" : ""}</li>`;
+}
+async function carregarOrdem(id) {
+  if (id !== ordemAtual) leiturasVistas = null;
+  ordemAtual = id;
+  desenharListaOrdens();
+  let d;
+  try { d = await api("GET", "/api/recebimentos/" + id); }
+  catch { ordemAtual = null; $("ordemDetalhe").innerHTML = '<p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p>'; return; }
+  const r = d.recebimento, aberto = r.status === "ABERTO";
+  const total = d.itens.reduce((s, i) => s + i.prevista, 0), lidas = d.itens.reduce((s, i) => s + i.lidas, 0);
+  const novas = new Set(leiturasVistas ? d.leituras.filter((l) => !leiturasVistas.has(l.id)).map((l) => l.id) : []);
+  leiturasVistas = new Set(d.leituras.map((l) => l.id));
+  $("ordemDetalhe").innerHTML = `
+    <div class="card-titulo" style="font-size:17px"><span class="cod">Ordem ${esc(r.numero)}</span> ${seloStatus(aberto ? "ABERTO" : r.status === "FINALIZADO" ? "FECHADO" : r.status)}
+      <span class="acoes">
+        ${aberto ? `<button class="sucesso" onclick="finalizarOrdem(this)">Finalizar e dar entrada</button><button onclick="cancelarOrdem(this)">Cancelar ordem</button>` : ""}
+      </span></div>
+    <p style="margin:0 0 12px">${r.documento ? `<b>NF:</b> ${esc(r.documento)} · ` : ""}${r.fornecedor ? `<b>Fornecedor:</b> ${esc(r.fornecedor)} · ` : ""}<b>Entrada em:</b> ${esc(r.endereco)}<br>
+      <span class="fraco">Criada ${dataHoraBR(r.criado_em)}${r.finalizado_em ? " · encerrada " + dataHoraBR(r.finalizado_em) : ""}</span></p>
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="rotulo">Esperado</div><div class="valor">${num(total)}</div></div>
+      <div class="kpi ${lidas >= total ? "sucesso" : "alerta"}"><div class="rotulo">Recebido</div><div class="valor">${num(lidas)}</div></div>
+      <div class="kpi"><div class="rotulo">Falta</div><div class="valor">${num(Math.max(total - lidas, 0))}</div></div>
+    </div>
+    <div class="tabela"><table><thead><tr><th>Produto</th><th>Lote</th><th>Validade</th><th class="num">Recebido</th><th style="width:25%"></th></tr></thead><tbody>
+      ${d.itens.map((i) => `<tr><td>${esc(i.sku)} <span class="fraco">${esc(i.descricao)}</span>${i.etiquetas ? ` <span class="selo info">${i.etiquetas} RFID</span>` : ""}</td>
+        <td>${esc(i.lote)}</td><td>${dataBR(i.validade)}</td>
+        <td class="num"><b>${num(i.lidas)}</b> / ${num(i.prevista)} ${esc(i.unidade)}</td><td>${barra(i.lidas, i.prevista)}</td></tr>`).join("")}
+    </tbody></table></div>
+    <h3 style="margin:18px 0 8px;font-size:15px">Leituras ${aberto ? '<span class="fraco">(aparecem aqui na hora em que o coletor lê)</span>' : ""}</h3>
+    <div class="tabela"><table><thead><tr><th>Hora</th><th>Produto / lote</th><th>Etiqueta (EPC) / qtd</th><th>Origem</th><th></th></tr></thead><tbody>
+      ${d.leituras.map((l) => `<tr class="${novas.has(l.id) ? "nova" : ""}"><td>${dataHoraBR(l.data_hora).slice(11)}</td><td>${esc(l.sku)} · ${esc(l.lote)}</td>
+        <td>${l.epc ? `<span class="mono">${esc(l.epc)}</span>` : `${num(l.quantidade)} un. (${esc(l.meio.toLowerCase())})`}</td>
+        <td class="fraco">${esc(l.origem)}</td>
+        <td class="acoes">${aberto ? `<button class="link perigo-texto" onclick="removerLeituraOrdem(${l.id}, this)">remover</button>` : ""}</td></tr>`).join("")
+        || vazio(5, aberto ? "Nenhuma leitura ainda. No coletor: Recebimento → escolha esta ordem → leia as etiquetas." : "Nenhuma leitura")}
+    </tbody></table></div>`;
+}
+async function removerLeituraOrdem(id, botao) {
+  await executar(botao, async () => { await api("DELETE", `/api/recebimentos/${ordemAtual}/leituras/${id}`); await carregarOrdens(); });
+}
+async function finalizarOrdem(botao) {
+  const d = await api("GET", "/api/recebimentos/" + ordemAtual);
+  const faltas = d.itens.filter((i) => i.lidas !== i.prevista).map((i) => `• ${i.sku} lote ${i.lote}: ${num(i.lidas)} de ${num(i.prevista)}`);
+  const texto = `Dar entrada no estoque de tudo que foi lido na ordem ${d.recebimento.numero}?` +
+    (faltas.length ? `\n\nATENÇÃO, divergências:\n${faltas.join("\n")}\n\nSó entra o que foi lido.` : "");
+  if (!(await confirmar("Finalizar recebimento", texto, "Finalizar", "sucesso"))) return;
+  await executar(botao, async () => {
+    const r = await api("POST", `/api/recebimentos/${ordemAtual}/finalizar`);
+    toast(`Ordem ${r.numero} finalizada: entrada no estoque feita`);
+    r.divergencias.forEach((x) => toast("Divergência: " + x, "alerta", 8000));
+    await carregarOrdens();
+  });
+}
+async function cancelarOrdem(botao) {
+  if (!(await confirmar("Cancelar ordem", "As leituras desta ordem serão descartadas e nada entra no estoque.", "Cancelar ordem"))) return;
+  await executar(botao, async () => { const r = await api("POST", `/api/recebimentos/${ordemAtual}/cancelar`); toast(`Ordem ${r.numero} cancelada`, "alerta"); await carregarOrdens(); });
 }
 
 // ======================================================================= baixa
@@ -1306,7 +1471,8 @@ $("formLimpar").addEventListener("submit", (ev) => {
     await api("POST", "/api/limpar-tudo", { manter_cadastros: manter });
     $("dlgLimpar").close();
     // Esquece o que estava aberto nas telas e limpa todos os formulários
-    pedidoAtual = null; inventarioAtual = null; itensNovoPedido = []; estoqueLinhas = []; conferidos = new Set();
+    pedidoAtual = null; inventarioAtual = null; ordemAtual = null; itensNovaOrdem = [];
+    $("ordemDetalhe").innerHTML = '<p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p>'; itensNovoPedido = []; estoqueLinhas = []; conferidos = new Set();
     $("pedidoDetalhe").innerHTML = '<p class="vazio">Escolha um pedido na lista ou crie um novo.</p>';
     $("iLista").value = "";
     document.querySelectorAll("main form").forEach((f) => f.reset());
@@ -1319,7 +1485,7 @@ $("formLimpar").addEventListener("submit", (ev) => {
 // ======================================================================= atualização automática
 // O que o coletor faz aparece aqui sozinho (a tela consulta o servidor a cada 5 s).
 const carregadores = {
-  painel: carregarPainel, estoque: carregarEstoque, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
+  painel: carregarPainel, estoque: carregarEstoque, ordens: carregarOrdens, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
   inventario: async () => { await carregarInventarios(); await carregarInventario(); }, movimentos: carregarMovimentos,
   produtos: async () => { await carregarCadastros(); desenharProdutos(); },
   enderecos: async () => { await carregarCadastros(); desenharEnderecos(); },
@@ -1343,7 +1509,9 @@ async function iniciar() {
     await carregarCadastros();
   } catch (e) { toast(e.message, "erro"); }
   $("eEndereco").value = enderecoDoca();
+  $("orEndereco").value = enderecoDoca();
   desenharItensPedido();
+  desenharItensOrdem();
   irPara(location.hash.slice(1) || "painel");
   relogio();
   setInterval(() => atualizar(false), 5000);

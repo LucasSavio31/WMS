@@ -129,6 +129,10 @@
   .check { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--borda); flex: none; display: grid; place-items: center; font-weight: 700; color: #fff; }
   li.ok .check { background: var(--sucesso); border-color: var(--sucesso); }
   .contador { font-size: 26px; font-weight: 800; }
+  .progresso { height: 7px; border-radius: 4px; background: var(--bg); overflow: hidden; margin-top: 4px; }
+  .progresso > span { display: block; height: 100%; background: var(--primaria); }
+  .progresso.completo > span { background: var(--sucesso); }
+  .lista li.escolhido { background: var(--fundo-info); box-shadow: inset 4px 0 0 var(--primaria); }
   .selo { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 11.5px; font-weight: 700; background: var(--bg); color: var(--texto-2); white-space: nowrap; }
   .selo.perigo { background: var(--fundo-perigo); color: var(--perigo); } .selo.alerta { background: var(--fundo-alerta); color: var(--alerta); }
   .selo.sucesso { background: var(--fundo-sucesso); color: var(--sucesso); } .selo.info { background: var(--fundo-info); color: var(--primaria); }
@@ -626,9 +630,9 @@ telas.menu = {
   rfid(epc) { location.hash = "consulta"; setTimeout(() => telas.consulta.rfid(epc), 50); },
 };
 
-// ======================================================================= RECEBIMENTO (entrada)
-telas.entrada = {
-  titulo: "Recebimento",
+// ======================================================================= ENTRADA AVULSA (sem ordem)
+telas.avulsa = {
+  titulo: "Entrada avulsa",
   abrir() { this.produto = null; this.tags = new Map(); this.desenhar(); },
   desenhar() {
     const p = this.produto;
@@ -686,7 +690,7 @@ telas.entrada = {
       if (tag.status === "ATIVA") { t.ok = false; t.info = `já em estoque: ${tag.sku} lote ${tag.lote}`; bipe("erro"); }
       else t.info = `reaproveitada (era ${tag.sku})`;
     } catch { /* tag nunca usada: nova */ }
-    if (telaAtual === "entrada") this.desenharTags();
+    if (telaAtual === "avulsa") this.desenharTags();
   },
   endereco(e) { if (this.produto) { $("enEndereco").value = e.id; msg("Endereço " + e.codigo, "info"); } },
   removerTag(_b, epc) { this.tags.delete(epc); this.desenharTags(); },
@@ -707,6 +711,124 @@ telas.entrada = {
       this.abrir();
       msg(`OK: entrada de ${num(r.quantidade)} ${r.sku}\nLote ${r.lote} em ${r.endereco} · saldo ${num(r.saldo)}` +
         (r.avisos.length ? "\n⚠ " + r.avisos.join("\n⚠ ") : ""), r.avisos.length ? "alerta" : "ok");
+    });
+  },
+};
+
+// ======================================================================= RECEBIMENTO (ordens criadas no PC)
+// O PC cadastra a ordem (NF, itens, lotes, quantidades). Aqui o operador escolhe o
+// item e lê as etiquetas: cada leitura vai NA HORA para o servidor (a tela do PC
+// mostra ao vivo). Finalizar dá entrada no estoque.
+const barraProgresso = (lidas, prevista) =>
+  `<div class="progresso ${lidas >= prevista ? "completo" : ""}"><span style="width:${Math.min(100, prevista ? (100 * lidas) / prevista : 0)}%"></span></div>`;
+telas.entrada = {
+  titulo: "Recebimento",
+  gatilho: "barras",
+  async abrir() {
+    this.ordem = null; this.itemId = null; this.buffer = []; this.confirmando = false;
+    tela.innerHTML = `<div class="card"><h2>Ordens de recebimento abertas</h2><ul class="lista" id="orLista"><li class="vazio">Carregando…</li></ul></div>
+      <div class="botoes"><button class="b" onclick="location.hash='avulsa'">➕ Entrada avulsa (sem ordem)</button></div>`;
+    try {
+      const lista = (await api("GET", "/api/recebimentos")).filter((r) => r.status === "ABERTO");
+      if (telaAtual !== "entrada" || !$("orLista")) return;
+      $("orLista").innerHTML = lista.map((r) => `<li class="clicavel" data-acao="abrirOrdem" data-valor="${r.id}">
+          <div class="info"><b>${esc(r.numero)}</b>${r.documento ? " · " + esc(r.documento) : ""}
+            <div class="fraco">${esc(r.fornecedor || "")} ${r.itens} item(ns)</div>${barraProgresso(r.lidas, r.prevista)}</div>
+          <span class="qtd">${num(r.lidas)}/${num(r.prevista)}</span></li>`).join("")
+        || `<li class="vazio">Nenhuma ordem aberta.<br>Crie no PC em "Ordens de recebimento" ou use a entrada avulsa.</li>`;
+    } catch (e) { msg(e.message, "erro"); }
+  },
+  async abrirOrdem(_b, id) {
+    await executar(null, async () => {
+      const d = await api("GET", "/api/recebimentos/" + id);
+      this.ordem = d; this.confirmando = false;
+      if (!d.itens.some((i) => i.id === this.itemId)) {
+        const faltando = d.itens.filter((i) => i.lidas < i.prevista);
+        this.itemId = faltando.length === 1 ? faltando[0].id : null;
+      }
+      this.desenhar();
+    });
+  },
+  item() { return this.ordem?.itens.find((i) => i.id === this.itemId); },
+  desenhar() {
+    const d = this.ordem, r = d.recebimento, item = this.item();
+    const total = d.itens.reduce((s, i) => s + i.prevista, 0), lidas = d.itens.reduce((s, i) => s + i.lidas, 0);
+    definirGatilho(item ? "rfid" : "barras");   // sem item: bipa o produto; com item: lê as etiquetas
+    tela.innerHTML = `<div class="card"><h2>${esc(r.numero)}${r.documento ? " · " + esc(r.documento) : ""}
+        <span class="dir"><span class="contador">${num(lidas)}/${num(total)}</span></span></h2>
+        ${r.fornecedor ? `<div class="fraco">${esc(r.fornecedor)}</div>` : ""}${barraProgresso(lidas, total)}</div>
+      <div class="card"><h2>Itens <span class="dir fraco">toque ou bipe o produto</span></h2><ul class="lista">
+        ${d.itens.map((i) => `<li class="clicavel ${i.id === this.itemId ? "escolhido" : ""}" data-acao="escolherItem" data-valor="${i.id}">
+          <div class="info"><b>${esc(i.sku)}</b> · lote ${esc(i.lote)} ${seloValidade(i.validade)}
+            <div class="fraco">${esc(i.descricao)} · val. ${dataBR(i.validade)}</div>${barraProgresso(i.lidas, i.prevista)}</div>
+          <span class="qtd">${num(i.lidas)}/${num(i.prevista)}</span></li>`).join("")}</ul></div>
+      ${item ? `<div class="card"><h2>Item escolhido</h2>
+          <div class="produto">${esc(item.sku)} · lote ${esc(item.lote)}</div>
+          <p class="fraco" style="margin:4px 0 8px">Aperte o gatilho perto das etiquetas: cada uma já vai para o servidor.</p>
+          <label class="campo"><span>Sem etiqueta RFID? Quantidade</span><input id="rcQtd" inputmode="decimal" enterkeyhint="done" data-enter="adicionarQtd"></label>
+          <div class="botoes"><button class="b" data-acao="adicionarQtd" id="rcQtdBotao">Adicionar quantidade</button></div></div>`
+        : `<div class="dica">Bipe o <b>código de barras</b> do produto<br>ou toque no item para escolher</div>`}
+      ${this.confirmando ? this.htmlConfirmar() : `<div class="botoes" style="margin-top:8px"><button class="b" data-acao="abrir">Ordens</button>
+        <button class="b sucesso" data-acao="pedirFinalizar" ${lidas ? "" : "disabled"}>Finalizar</button></div>`}`;
+  },
+  htmlConfirmar() {
+    const faltas = this.ordem.itens.filter((i) => i.lidas !== i.prevista);
+    return `<div class="card" style="border-color:var(--alerta)"><h2>Finalizar ${esc(this.ordem.recebimento.numero)}?</h2>
+      <p style="margin:0 0 8px">Dá entrada no estoque de tudo que foi lido.</p>
+      ${faltas.length ? `<p style="margin:0 0 8px;color:var(--alerta)"><b>Divergências:</b><br>${faltas.map((i) => `${esc(i.sku)} lote ${esc(i.lote)}: ${num(i.lidas)} de ${num(i.prevista)}`).join("<br>")}</p>` : ""}
+      <div class="botoes"><button class="b" data-acao="cancelarFinalizar">Voltar</button><button class="b sucesso" data-acao="finalizar" id="rcFinalizar">Confirmar</button></div></div>`;
+  },
+  escolherItem(_b, id) { this.itemId = Number(id); this.confirmando = false; this.desenhar(); msg(`Item ${this.item().sku} lote ${this.item().lote}: leia as etiquetas`, "info", false); },
+  codigo(c) {
+    if (!this.ordem) return msg("Abra uma ordem de recebimento", "alerta");
+    const doProduto = this.ordem.itens.filter((i) => i.ean === c || i.sku.toUpperCase() === c);
+    if (!doProduto.length) return msg(`${c} não está nesta ordem`, "erro");
+    const item = doProduto.find((i) => i.lidas < i.prevista) || doProduto[0];
+    this.escolherItem(null, item.id);
+    bipe("ok");
+  },
+  rfid(epc) {
+    if (!this.ordem) return msg("Abra uma ordem de recebimento", "alerta");
+    if (!this.item()) return msg("Escolha o item antes de ler as etiquetas", "alerta");
+    // junta as leituras de ~0,25 s e manda de uma vez (online, sem esperar o operador)
+    this.buffer.push(epc);
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.enviarBuffer(), 250);
+  },
+  async enviarBuffer() {
+    const epcs = [...new Set(this.buffer)]; this.buffer = [];
+    if (!epcs.length || !this.ordem) return;
+    const rec = this.ordem.recebimento.id, itemId = this.itemId;
+    try {
+      const r = await api("POST", `/api/recebimentos/${rec}/leituras`, { item_id: itemId, epcs, origem: "COLETOR", meio: "RFID" });
+      const novas = r.tags.filter((t) => t.ok && !t.repetida).length, erros = r.tags.filter((t) => !t.ok);
+      const errosUnicos = [...new Set(erros.map((t) => t.erro))];
+      if (novas || erros.length) {
+        msg((novas ? `✓ ${novas} etiqueta(s) · ${r.sku} ${num(r.lidas)}/${num(r.prevista)}` : "") +
+          errosUnicos.map((e) => `\n✕ ${erros.filter((t) => t.erro === e).length} etiqueta(s): ${e}`).join(""),
+          erros.length ? (novas ? "alerta" : "erro") : "ok");
+      }
+      if (telaAtual === "entrada" && this.ordem?.recebimento.id === rec) await this.abrirOrdem(null, rec);
+    } catch (e) { msg(e.message, "erro"); }
+  },
+  async adicionarQtd() {
+    const q = numero($("rcQtd")?.value);
+    if (!(q > 0)) return msg("Informe a quantidade", "alerta");
+    await executar($("rcQtdBotao"), async () => {
+      const r = await api("POST", `/api/recebimentos/${this.ordem.recebimento.id}/leituras`,
+        { item_id: this.itemId, quantidade: q, origem: "COLETOR", meio: "BARRAS" });
+      await this.abrirOrdem(null, this.ordem.recebimento.id);
+      msg(`✓ ${num(q)} · ${r.sku} ${num(r.lidas)}/${num(r.prevista)}`);
+    });
+  },
+  pedirFinalizar() { this.confirmando = true; this.desenhar(); },
+  cancelarFinalizar() { this.confirmando = false; this.desenhar(); },
+  async finalizar() {
+    await executar($("rcFinalizar"), async () => {
+      const r = await api("POST", `/api/recebimentos/${this.ordem.recebimento.id}/finalizar`);
+      await this.abrir();
+      msg(`OK: ${r.numero} finalizada, entrada no estoque feita` + r.divergencias.map((d) => "\n⚠ " + d).join(""),
+        r.divergencias.length ? "alerta" : "ok");
     });
   },
 };

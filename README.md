@@ -39,7 +39,8 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 | Cadastro de produtos (SKU, EAN, unidade, mínimo, ativo/inativo) | ✔ | — |
 | Cadastro de endereços (doca de recebimento, A-01-01, expedição) | ✔ | — |
 | Posição de estoque por produto, lote e endereço, com filtros e exportação CSV | ✔ | Consulta |
-| Recebimento (entrada) com nota fiscal; lote novo vai para a doca | Quantidade digitada | RFID (cada tag = 1 unidade) ou código de barras + quantidade |
+| Ordem de recebimento: o PC cadastra NF, itens, lotes e quantidades; o coletor lê as etiquetas e cada leitura aparece no PC na hora | Cria, acompanha ao vivo, finaliza | Escolhe o item, lê as etiquetas RFID (ou informa a quantidade), finaliza |
+| Entrada avulsa (sem ordem) com nota fiscal; lote novo vai para a doca | Quantidade digitada | RFID (cada tag = 1 unidade) ou código de barras + quantidade |
 | Armazenagem / transferência de lote entre endereços | ✔ | — |
 | Bloqueio de lote (quarentena) e liberação | ✔ | — |
 | Baixa: FEFO automático, lote escolhido (descarte) ou por EPC | ✔ | RFID ou código de barras + quantidade (FEFO) |
@@ -55,6 +56,12 @@ Na baixa por RFID, a tag já indica o lote. Se existir outro lote que vence ante
 **Fluxo de saída para cliente**: criar o pedido → *Liberar para separação* (o sistema reserva os lotes por FEFO e
 monta a lista de separação em ordem de endereço) → separar e conferir cada linha → *Confirmar expedição* (baixa com
 motivo VENDA e o número do pedido como documento). Cancelar devolve a reserva.
+
+**Ordem de recebimento (pré-recebimento)**: no PC, *Ordens de recebimento* → nota fiscal, fornecedor e itens
+esperados (produto, lote, validade, quantidade). No coletor, *Recebimento* → escolhe a ordem → toca no item (ou bipa
+o código de barras do produto) → aperta o gatilho nas etiquetas. Cada etiqueta é gravada na hora e aparece no PC.
+O sistema recusa etiqueta já em estoque, já lida em outra ordem e item que já completou a quantidade. *Finalizar*
+(no PC ou no coletor) dá entrada de tudo que foi lido, com a NF como documento, e mostra as divergências.
 
 **Endereçamento**: cada lote fica em um endereço. O lote novo entra na `DOCA-REC` e depois é *armazenado*
 (transferido) para um endereço de estoque. A transferência fica registrada nos movimentos.

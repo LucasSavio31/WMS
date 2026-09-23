@@ -143,6 +143,11 @@ def excluir_produto(con, produto_id):
     n_lotes = con.execute("DELETE FROM lotes WHERE produto_id=?", args).rowcount
     con.execute("DELETE FROM pedido_itens WHERE produto_id=?", args)
     con.execute("DELETE FROM pedidos WHERE id NOT IN (SELECT pedido_id FROM pedido_itens)")
+    itens_rec = "SELECT id FROM recebimento_itens WHERE produto_id=?"
+    con.execute(f"DELETE FROM recebimento_leituras WHERE item_id IN ({itens_rec})", args)
+    con.execute("DELETE FROM recebimento_itens WHERE produto_id=?", args)
+    con.execute("""DELETE FROM recebimentos WHERE status='ABERTO'
+                   AND id NOT IN (SELECT recebimento_id FROM recebimento_itens)""")
     con.execute("DELETE FROM produtos WHERE id=?", args)
     return {"ok": True, "sku": p["sku"], "lotes": n_lotes}
 
@@ -152,7 +157,8 @@ def limpar_tudo(con, manter_cadastros=False):
 
     Com manter_cadastros, apaga só a movimentação e deixa produtos e endereços.
     """
-    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventarios", "movimentos", "tags", "lotes"]
+    tabelas = ["reservas", "pedido_itens", "pedidos", "contagens", "inventarios", "recebimento_leituras",
+               "recebimento_itens", "recebimentos", "movimentos", "tags", "lotes"]
     if not manter_cadastros:
         tabelas += ["produtos", "enderecos"]
     for tabela in tabelas:
@@ -481,3 +487,156 @@ def cancelar_pedido(con, pedido_id):
     con.execute("DELETE FROM reservas WHERE pedido_id=?", (pedido_id,))
     con.execute("UPDATE pedidos SET status='CANCELADO' WHERE id=?", (pedido_id,))
     return {"numero": ped["numero"], "status": "CANCELADO"}
+
+
+# ----------------------------------------------------------------- ordens de recebimento
+def buscar_recebimento(con, recebimento_id, status=None):
+    rec = con.execute("SELECT * FROM recebimentos WHERE id=?", (recebimento_id,)).fetchone()
+    if not rec:
+        raise ErroEstoque("Ordem de recebimento não encontrada")
+    if status and rec["status"] not in status:
+        raise ErroEstoque(f"Recebimento {rec['numero']} está {rec['status']}")
+    return rec
+
+
+def criar_recebimento(con, itens, documento=None, fornecedor=None, endereco_id=None, numero=None):
+    """Pré-recebimento: o que vai chegar (produto, lote, validade, quantidade esperada)."""
+    if not itens:
+        raise ErroEstoque("Inclua pelo menos um item no recebimento")
+    linhas = []
+    for item in itens:
+        p = produto_ativo(con, item.get("produto_id"), item.get("codigo"))
+        lote = (item.get("lote") or "").strip().upper()
+        if not lote:
+            raise ErroEstoque(f"Informe o lote de {p['sku']}")
+        validar_quantidade(p, item.get("quantidade"))
+        if any(l[0] == p["id"] and l[1] == lote for l in linhas):
+            raise ErroEstoque(f"{p['sku']} lote {lote} repetido no recebimento")
+        linhas.append((p["id"], lote, normalizar_data(item.get("validade")), item["quantidade"]))
+    endereco = buscar_endereco(con, endereco_id)
+    numero = (numero or "").strip().upper()
+    if numero and con.execute("SELECT 1 FROM recebimentos WHERE numero=?", (numero,)).fetchone():
+        raise ErroEstoque(f"Já existe o recebimento {numero}")
+    rec_id = con.execute(
+        "INSERT INTO recebimentos (numero, documento, fornecedor, endereco_id, criado_em) VALUES (?,?,?,?,?)",
+        (numero or f"TMP-{db.agora()}", (documento or "").strip() or None, (fornecedor or "").strip() or None,
+         endereco["id"], db.agora())).lastrowid
+    if not numero:
+        numero = f"REC-{rec_id:05d}"
+        con.execute("UPDATE recebimentos SET numero=? WHERE id=?", (numero, rec_id))
+    for produto_id, lote, validade, qtd in linhas:
+        con.execute("INSERT INTO recebimento_itens (recebimento_id, produto_id, lote, validade, prevista) VALUES (?,?,?,?,?)",
+                    (rec_id, produto_id, lote, validade, qtd))
+    return {"id": rec_id, "numero": numero}
+
+
+def itens_recebimento(con, recebimento_id):
+    """Itens com o que já foi lido (lidas) × o esperado (prevista)."""
+    return db.linhas(con.execute(
+        """SELECT i.*, p.sku, p.descricao, p.unidade, p.ean,
+                  COALESCE((SELECT SUM(quantidade) FROM recebimento_leituras r WHERE r.item_id=i.id), 0) AS lidas,
+                  (SELECT COUNT(*) FROM recebimento_leituras r WHERE r.item_id=i.id AND r.epc IS NOT NULL) AS etiquetas
+           FROM recebimento_itens i JOIN produtos p ON p.id=i.produto_id
+           WHERE i.recebimento_id=? ORDER BY i.id""", (recebimento_id,)))
+
+
+def escolher_item(con, recebimento_id, item_id=None, codigo=None):
+    """Item pelo id, pelo código de barras do produto (1º incompleto) ou o único que falta."""
+    itens = itens_recebimento(con, recebimento_id)
+    if item_id:
+        item = next((i for i in itens if i["id"] == item_id), None)
+        if not item:
+            raise ErroEstoque("Item não pertence a este recebimento")
+        return item
+    if codigo:
+        p = buscar_produto(con, codigo=codigo)
+        do_produto = [i for i in itens if i["produto_id"] == p["id"]]
+        if not do_produto:
+            raise ErroEstoque(f"{p['sku']} não está neste recebimento")
+        return next((i for i in do_produto if i["lidas"] < i["prevista"]), do_produto[0])
+    faltando = [i for i in itens if i["lidas"] < i["prevista"]]
+    if len(faltando) == 1:
+        return faltando[0]
+    raise ErroEstoque("Escolha o item (toque nele ou bipe o código de barras do produto)")
+
+
+def ler_recebimento(con, recebimento_id, item_id=None, epcs=(), quantidade=None, codigo=None,
+                    origem="COLETOR", meio="RFID"):
+    """Grava na hora cada etiqueta (ou quantidade) lida para um item do recebimento."""
+    rec = buscar_recebimento(con, recebimento_id, ("ABERTO",))
+    item = escolher_item(con, recebimento_id, item_id, codigo)
+    lidas, prevista = item["lidas"], item["prevista"]
+    resultado = []
+    if epcs:
+        for epc in dict.fromkeys(e.strip().upper() for e in epcs if e and e.strip()):
+            erro = None
+            ja = con.execute("""SELECT l.recebimento_id, r.numero FROM recebimento_leituras l
+                                JOIN recebimentos r ON r.id=l.recebimento_id
+                                WHERE l.epc=? AND r.status='ABERTO'""", (epc,)).fetchone()
+            tag = con.execute("SELECT status FROM tags WHERE epc=?", (epc,)).fetchone()
+            if ja and ja["recebimento_id"] == rec["id"]:
+                resultado.append({"epc": epc, "ok": True, "repetida": True})
+                continue
+            if ja:
+                erro = f"já lida no recebimento {ja['numero']}"
+            elif tag and tag["status"] == "ATIVA":
+                erro = "já está em estoque"
+            elif lidas + 1 > prevista:
+                erro = f"{item['sku']} lote {item['lote']} já completo ({fmt(prevista)})"
+            if erro:
+                resultado.append({"epc": epc, "ok": False, "erro": erro})
+                continue
+            con.execute("""INSERT INTO recebimento_leituras (recebimento_id, item_id, epc, quantidade, origem, meio, data_hora)
+                           VALUES (?,?,?,1,?,'RFID',?)""", (rec["id"], item["id"], epc, origem, db.agora()))
+            lidas += 1
+            resultado.append({"epc": epc, "ok": True, "repetida": False})
+    else:
+        p = buscar_produto(con, item["produto_id"])
+        validar_quantidade(p, quantidade)
+        if lidas + quantidade > prevista:
+            raise ErroEstoque(f"{item['sku']} lote {item['lote']}: faltam {fmt(prevista - lidas)}, "
+                              f"não dá para receber {fmt(quantidade)}")
+        con.execute("""INSERT INTO recebimento_leituras (recebimento_id, item_id, quantidade, origem, meio, data_hora)
+                       VALUES (?,?,?,?,?,?)""", (rec["id"], item["id"], quantidade, origem, meio, db.agora()))
+        lidas += quantidade
+    return {"item_id": item["id"], "sku": item["sku"], "lote": item["lote"], "lidas": lidas,
+            "prevista": prevista, "tags": resultado}
+
+
+def remover_leitura_recebimento(con, recebimento_id, leitura_id):
+    buscar_recebimento(con, recebimento_id, ("ABERTO",))
+    con.execute("DELETE FROM recebimento_leituras WHERE id=? AND recebimento_id=?", (leitura_id, recebimento_id))
+    return {"ok": True}
+
+
+def finalizar_recebimento(con, recebimento_id, origem="PC"):
+    """Dá entrada no estoque de tudo que foi lido (etiquetas e quantidades)."""
+    rec = buscar_recebimento(con, recebimento_id, ("ABERTO",))
+    itens = itens_recebimento(con, recebimento_id)
+    if not any(i["lidas"] for i in itens):
+        raise ErroEstoque("Nenhuma leitura neste recebimento")
+    documento = rec["documento"] or rec["numero"]
+    divergencias, entradas = [], 0
+    for item in itens:
+        epcs = [r["epc"] for r in con.execute(
+            "SELECT epc FROM recebimento_leituras WHERE item_id=? AND epc IS NOT NULL", (item["id"],))]
+        qtd = con.execute("SELECT COALESCE(SUM(quantidade), 0) FROM recebimento_leituras WHERE item_id=? AND epc IS NULL",
+                          (item["id"],)).fetchone()[0]
+        if epcs:
+            entrada(con, item["produto_id"], item["lote"], item["validade"], epcs=epcs, origem=origem,
+                    endereco_id=rec["endereco_id"], documento=documento)
+            entradas += 1
+        if qtd:
+            entrada(con, item["produto_id"], item["lote"], item["validade"], quantidade=qtd, origem=origem,
+                    meio="BARRAS", endereco_id=rec["endereco_id"], documento=documento)
+            entradas += 1
+        if item["lidas"] != item["prevista"]:
+            divergencias.append(f"{item['sku']} lote {item['lote']}: recebido {fmt(item['lidas'])} de {fmt(item['prevista'])}")
+    con.execute("UPDATE recebimentos SET status='FINALIZADO', finalizado_em=? WHERE id=?", (db.agora(), recebimento_id))
+    return {"numero": rec["numero"], "entradas": entradas, "divergencias": divergencias}
+
+
+def cancelar_recebimento(con, recebimento_id):
+    rec = buscar_recebimento(con, recebimento_id, ("ABERTO",))
+    con.execute("UPDATE recebimentos SET status='CANCELADO', finalizado_em=? WHERE id=?", (db.agora(), recebimento_id))
+    return {"numero": rec["numero"], "status": "CANCELADO"}
