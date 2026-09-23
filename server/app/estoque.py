@@ -98,6 +98,7 @@ def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False):
     """Quanto tirar de cada lote, começando pelo que vence primeiro.
 
     Lotes vencidos ficam de fora, a não ser na baixa por motivo VENCIMENTO.
+    Unidades etiquetadas com RFID também ficam de fora: saem lendo a tag.
     """
     if not quantidade or quantidade <= 0:
         raise ErroEstoque("Quantidade deve ser maior que zero")
@@ -105,7 +106,13 @@ def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False):
     for l in lotes_fefo(con, produto_id):
         if vencido(l) != usar_vencidos:
             continue
-        tirar = min(l["quantidade"], falta)
+        # Unidades com etiqueta RFID só saem lendo a tag (baixa_tag)
+        etiquetadas = con.execute("SELECT COUNT(*) FROM tags WHERE lote_id=? AND status='ATIVA'",
+                                  (l["id"],)).fetchone()[0]
+        livre = l["quantidade"] - etiquetadas
+        if livre <= 0:
+            continue
+        tirar = min(livre, falta)
         plano.append({"lote_id": l["id"], "lote": l["lote"], "validade": l["validade"], "quantidade": tirar})
         falta -= tirar
         if falta <= 0:

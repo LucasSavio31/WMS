@@ -75,3 +75,14 @@ def test_fefo_ignora_vencidos_exceto_motivo_vencimento(api):
     r = api.post("/api/baixas", json={"produto_id": pid, "quantidade": 5, "motivo": "VENCIMENTO"})
     assert [l["lote"] for l in r.json()["lotes"]] == ["VELHO"]
     assert saldo(api, "VELHO") == 0 and saldo(api, "NOVO") == 3
+
+
+def test_baixa_por_quantidade_nao_usa_unidades_com_tag(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "RF", "validade": "2030-01-01", "epcs": ["T1", "T2"]})
+    api.post("/api/entradas", json={"produto_id": pid, "lote": "CB", "validade": "2031-01-01", "quantidade": 5})
+
+    r = api.post("/api/baixas", json={"produto_id": pid, "quantidade": 3})
+    assert [l["lote"] for l in r.json()["lotes"]] == ["CB"]       # pula o lote etiquetado
+    r = api.post("/api/baixas", json={"epcs": ["T1"]})
+    assert r.json()["tags"][0]["ok"]                              # a tag continua podendo sair

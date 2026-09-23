@@ -29,6 +29,7 @@ confere o saldo e grava a data/hora é o servidor. Por isso o relógio do coleto
 
 **FEFO** (*First Expired, First Out*): na baixa por quantidade, o servidor tira primeiro do lote
 que vence antes. Lotes vencidos ficam de fora, a não ser que o motivo da baixa seja `VENCIMENTO`.
+Unidades com etiqueta RFID também ficam de fora: elas só saem lendo a tag.
 Na baixa por RFID, a tag já indica o lote. Se existir outro lote que vence antes, o servidor devolve um aviso.
 
 **Inventário**: cada contagem (do PC ou do coletor) é gravada. A tela mostra, lote a lote,
@@ -118,5 +119,3 @@ O gatilho do MC33 é compartilhado. Na tela, a opção **RFID / Código de barra
 - Sem login nem senha, e sem HTTPS: é para uso em rede local.
 - Sem endereçamento (rua, prateleira): o estoque é controlado por produto e lote.
 - Se a rede cair, o coletor mostra o erro e o operador envia de novo. Não existe fila offline.
-- Tags RFID e código de barras no **mesmo lote**: a baixa por código de barras reduz o saldo, mas não
-  sabe qual tag saiu, e essa tag continua ATIVA. O ideal é controlar cada produto por um meio só.
