@@ -14,7 +14,7 @@ import uvicorn
 from app import db
 from app.main import app
 
-# O banco fica em Documentos\MiniWMS\estoque.db do usuário (ver app/db.py).
+# O banco fica em AppData\Local\MiniWMS\estoque.db do usuário (ver app/db.py).
 
 PORTA = int(os.environ.get("WMS_PORTA", "8000"))   # outra porta: set WMS_PORTA=8080 antes de abrir
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     print(f" Tela do PC ...........: http://localhost:{PORTA}")
     print(f" Endereço no coletor ..: http://{ip}:{PORTA}")
     try:
-        db.inicializar()   # escolhe a pasta do banco (Documentos) antes de mostrar o caminho
+        db.inicializar()   # cria a pasta do banco antes de mostrar o caminho
     except Exception as e:  # noqa: BLE001
         sair(f"Não foi possível abrir o banco de dados: {e}")
     print(f" Banco de dados .......: {db.DB_PATH}")

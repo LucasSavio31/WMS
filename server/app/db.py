@@ -19,17 +19,16 @@ def pasta_documentos() -> str:
     return os.path.join(os.path.expanduser("~"), "Documents")
 
 
-# O banco fica sempre em Documentos\MiniWMS\estoque.db do usuário (WMS_DB troca o caminho).
-DB_PADRAO = os.path.join(pasta_documentos(), "MiniWMS", "estoque.db")
+# O banco fica em AppData\Local\MiniWMS\estoque.db do usuário: pasta do próprio usuário que a
+# Proteção contra ransomware do Windows não vigia (em Documentos ela bloqueia o programa).
+# A variável WMS_DB troca o caminho.
+DB_PADRAO = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "MiniWMS", "estoque.db")
 DB_PATH = os.environ.get("WMS_DB") or DB_PADRAO
-
-# Se o Windows bloquear Documentos (Proteção contra ransomware / Acesso controlado a pastas),
-# o banco vai para esta pasta e o AVISO explica como liberar.
-DB_RESERVA = os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "MiniWMS", "estoque.db")
 AVISO = None
 
-# Onde o banco ficava antes (ao lado do servidor ou do .exe): copiado na primeira vez
-LOCAIS_ANTIGOS = [os.path.join(os.path.dirname(__file__), "..", "estoque.db")]
+# Onde o banco já ficou antes (Documentos, ao lado do servidor ou do .exe): copiado na primeira vez
+LOCAIS_ANTIGOS = [os.path.join(pasta_documentos(), "MiniWMS", "estoque.db"),
+                  os.path.join(os.path.dirname(__file__), "..", "estoque.db")]
 if getattr(sys, "frozen", False):
     LOCAIS_ANTIGOS.append(os.path.join(os.path.dirname(sys.executable), "estoque.db"))
 
@@ -240,41 +239,9 @@ def conectar() -> sqlite3.Connection:
     return con
 
 
-def pode_gravar(pasta: str) -> bool:
-    try:
-        os.makedirs(pasta, exist_ok=True)
-        teste = os.path.join(pasta, ".teste-gravacao")
-        with open(teste, "w") as f:
-            f.write("ok")
-        os.remove(teste)
-        return True
-    except OSError:
-        return False
-
-
-def escolher_pasta() -> None:
-    """Documentos/MiniWMS; se o Windows bloquear, usa a pasta reserva e avisa."""
-    global DB_PATH, AVISO
-    if DB_PATH != DB_PADRAO or pode_gravar(os.path.dirname(DB_PATH)):
-        return
-    if os.path.exists(DB_PADRAO):          # banco já está em Documentos, mas agora não dá para gravar
-        AVISO = ("O Windows está bloqueando a pasta Documentos (Proteção contra ransomware). "
-                 "Libere o WMS-Servidor.exe em: Segurança do Windows > Proteção contra vírus e ameaças > "
-                 "Proteção contra ransomware > Permitir um aplicativo pelo Acesso controlado a pastas.")
-        raise RuntimeError(AVISO)
-    DB_PATH = DB_RESERVA
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    AVISO = (f"O Windows bloqueou a pasta Documentos (Proteção contra ransomware). O banco ficou em {DB_PATH}. "
-             "Para usar Documentos, libere o WMS-Servidor.exe em: Segurança do Windows > Proteção contra vírus "
-             "e ameaças > Proteção contra ransomware > Permitir um aplicativo pelo Acesso controlado a pastas "
-             "(o banco é copiado para lá na próxima vez que abrir).")
-
-
 def trazer_banco_antigo() -> None:
-    if DB_PATH not in (DB_PADRAO, DB_RESERVA) or os.path.exists(DB_PATH):
+    if DB_PATH != DB_PADRAO or os.path.exists(DB_PATH):
         return
-    if DB_PATH == DB_PADRAO and os.path.exists(DB_RESERVA):
-        LOCAIS_ANTIGOS.insert(0, DB_RESERVA)   # estava na reserva: agora Documentos foi liberado
     for antigo in LOCAIS_ANTIGOS:
         if os.path.exists(antigo):
             origem = sqlite3.connect(antigo)          # backup do SQLite: copia certo mesmo com WAL
@@ -297,7 +264,6 @@ def ip_da_rede() -> str:
 
 
 def inicializar() -> None:
-    escolher_pasta()
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     trazer_banco_antigo()
     with conectar() as con:

@@ -60,10 +60,10 @@
   body { background: var(--bg); color: var(--texto); font: 15px/1.35 Roboto, "Segoe UI", system-ui, Arial, sans-serif; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto; }
 
   header { background: var(--topo); color: #fff; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 8px; min-height: 50px; flex: none; }
-  header .logo-senai { height: 26px; width: auto; border-radius: 3px; flex: none; }
-  header h1 { font-size: 16px; line-height: 1.15; margin: 0; flex: 1; min-width: 0; font-weight: 600; }   /* quebra entre palavras em vez de cortar */
+  header .logo-senai { height: 22px; width: auto; border-radius: 3px; flex: none; }
+  header h1 { font-size: 15px; line-height: 1.15; margin: 0; flex: 1; min-width: 0; font-weight: 600; }   /* quebra entre palavras em vez de cortar */
   header button { background: none; border: none; color: #fff; font-size: 22px; width: 40px; height: 42px; border-radius: 50%; flex: none; padding: 0; }
-  header #voltar { width: 30px; margin-left: -4px; }
+  header #voltar { width: 28px; margin: 0 -4px 0 -2px; }   /* logo fica sempre na borda esquerda; a seta vem depois */
   header button:active { background: #ffffff22; }
   /* Barra de status (hora, Wi-Fi, bateria): só em tela cheia, quando o Android esconde a dele */
   .status { display: none; align-items: center; gap: 10px; height: 24px; padding: 0 10px; background: #000; color: #fff; font: 600 13px Roboto, Arial, sans-serif; flex: none; }
@@ -78,15 +78,12 @@
   .status #iconeWifi.off { color: #ef5350 !important; }
   #btTelaCheia[hidden] { display: none; }
 
-  .leitura { display: flex; gap: 6px; padding: 6px 8px; background: var(--painel); border-bottom: 1px solid var(--borda); flex: none; }
-  .leitura textarea { flex: 1; resize: none; height: 38px; padding: 8px 10px; font: 15px Consolas, monospace; border: 2px dashed var(--borda); border-radius: 8px; background: var(--bg); color: var(--texto); overflow: hidden; white-space: nowrap; }
-  .leitura textarea:focus { outline: none; border-color: var(--primaria); border-style: solid; }
-  .leitura #modo { width: auto; padding: 0 8px; font: 700 13px Roboto, Arial, sans-serif; white-space: nowrap; }
-  .leitura #modo.rfid { background: var(--fundo-info); border-color: var(--primaria); color: var(--primaria); }
-  .leitura #modo.lendo { background: var(--primaria); color: #fff; animation: pulsa .6s infinite alternate; }
-  @keyframes pulsa { to { opacity: .6; } }
-  .leitura #modo.barras { background: var(--fundo-alerta); border-color: var(--alerta); color: var(--alerta); }
-  .leitura button { width: 42px; border: 1px solid var(--borda); border-radius: 8px; background: var(--painel); color: var(--texto); font-size: 18px; }
+  /* Campo invisível de captura do DataWedge (precisa existir e poder ter foco) */
+  .captura { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; overflow: hidden; }
+  header #modo, header #teclado { width: 34px; font-size: 18px; border-radius: 8px; }
+  header #modo.barras { background: #ffb74d33; }
+  header #modo.lendo { background: var(--primaria); animation: pulsa .6s infinite alternate; }
+  @keyframes pulsa { to { opacity: .55; } }
 
   main { flex: 1; overflow-y: auto; padding: 8px 8px 16px; }
   .grade-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -176,20 +173,26 @@
   </span>
 </div>
 <header>
-  <button id="voltar" aria-label="Voltar" style="display:none">←</button>
   <img src="/static/senai.png" alt="SENAI" class="logo-senai">
+  <button id="voltar" aria-label="Voltar" style="display:none">←</button>
   <h1 id="titulo">WMS Coletor</h1>
   <button id="btTelaCheia" aria-label="Tela cheia" title="Tela cheia" hidden>⛶</button>
-  <button id="btConfig" aria-label="Configurar servidor" title="Servidor">⚙</button>
+  <button id="modo" class="rfid" title="O gatilho lê: RFID ou código de barras (toque para trocar)" hidden>📡</button>
+  <button id="teclado" title="Abrir o teclado">⌨</button>
+  <button id="btConfig" aria-label="Config" title="Config">⚙</button>
 </header>
-<div class="leitura">
-  <textarea id="leitura" rows="1" inputmode="none" autocomplete="off" autocapitalize="characters" spellcheck="false"
-            placeholder="Leitura: aperte o gatilho"></textarea>
-  <button id="modo" class="rfid" title="O que o gatilho lê" hidden>📡 RFID</button>
-  <button id="teclado" title="Digitar código manualmente">⌨</button>
-</div>
+<!-- Campo invisível que recebe o que o DataWedge "digita" (código de barras). Não remover. -->
+<textarea id="leitura" class="captura" rows="1" inputmode="none" autocomplete="off" autocapitalize="characters"
+          spellcheck="false" tabindex="-1" aria-hidden="true"></textarea>
 <main id="tela"></main>
 <div id="msg" role="status"></div>
+
+<!-- ⌨ numa tela sem campo de digitação: digitar um código ou EPC à mão -->
+<dialog id="dlgDigitar"><form method="dialog" id="formDigitar">
+  <h3>Digitar código</h3>
+  <input id="edDigitar" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="Código de barras, SKU ou EPC">
+  <div class="botoes"><button class="b" type="button" id="digCancelar">Cancelar</button><button class="b primario" type="submit">OK</button></div>
+</form></dialog>
 
 <!-- Botão ⚙: configuração do servidor -->
 <dialog id="dlgServidor"><form method="dialog" id="formServidor">
@@ -280,7 +283,7 @@ function definirGatilho(modo) {
   if (!app) return;
   modoGatilho = modo;
   try { app.gatilhoRfid(modo === "rfid"); } catch {}
-  $("modo").textContent = modo === "rfid" ? "📡 RFID" : "▮▮ Código";
+  $("modo").textContent = modo === "rfid" ? "📡" : "▮▮";
   $("modo").className = modo;
 }
 function definirPotencia(pct) {
@@ -299,7 +302,7 @@ if (app) {
 window.gatilhoRfidEvento = (apertado) => {
   const lendo = apertado === "1";
   if (lendo) recebidasNaLeitura = 0;
-  $("modo").textContent = lendo ? "📡 Lendo…" : modoGatilho === "rfid" ? "📡 RFID" : "▮▮ Código";
+  $("modo").textContent = lendo || modoGatilho === "rfid" ? "📡" : "▮▮";
   $("modo").classList.toggle("lendo", lendo);
 };
 /** Fim de cada leitura RFID: quantas etiquetas o leitor viu. */
@@ -466,7 +469,30 @@ function tecladoManual(ligar) {
   leitura.blur(); leitura.focus();
   if (ligar) teclado?.show(); else teclado?.hide();
 }
-$("teclado").addEventListener("click", (ev) => { ev.stopPropagation(); tecladoManual(leitura.inputMode === "none"); });
+/** ⌨ do cabeçalho: abre o teclado no campo de digitação da tela; sem campo, abre "Digitar código". */
+$("teclado").addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  const campo = [...tela.querySelectorAll("input, textarea")].find((el) =>
+    !["range", "checkbox", "radio", "date", "hidden"].includes(el.type) && el.offsetParent !== null);
+  if (campo) {
+    campo.focus();
+    campo.scrollIntoView({ block: "center" });
+  } else {
+    $("edDigitar").value = "";
+    $("dlgDigitar").showModal();
+    $("edDigitar").focus();
+  }
+  teclado?.show();
+  try { window.ColetorApp?.mostrarTeclado?.(); } catch {}   // app: força o teclado do Android
+});
+$("digCancelar").addEventListener("click", () => $("dlgDigitar").close());
+$("formDigitar").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const v = $("edDigitar").value;
+  $("dlgDigitar").close();
+  if (v.trim()) processarLeitura(v);
+});
+$("dlgDigitar").addEventListener("close", () => setTimeout(focarLeitura, 50));
 
 // 5) Tela cheia: esconde a barra de endereços do Chrome. O navegador só deixa entrar
 //    em tela cheia depois de um toque, e o Chrome do Android sai dela sozinho em alguns
@@ -610,7 +636,7 @@ function abrir(nome) {
   if (telaAtual === "localizar" && nome !== "localizar") telas.localizar.sair();
   telaAtual = nome;
   $("titulo").textContent = telas[nome].titulo;
-  $("voltar").style.display = nome === "menu" ? "none" : "";   // no menu o logo encosta na esquerda
+  $("voltar").style.display = nome === "menu" ? "none" : "";   // seta depois do logo (o logo não sai do lugar)
   msg("");
   definirGatilho(telas[nome].gatilho || "rfid");
   definirPotencia(cfg.potencia);   // potência da antena escolhida em Config (padrão 100%)

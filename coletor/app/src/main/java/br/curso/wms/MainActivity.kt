@@ -18,6 +18,7 @@ import android.os.Looper
 import android.text.InputType
 import android.util.Log
 import android.view.KeyEvent
+import android.view.inputmethod.InputMethodManager
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.JavascriptInterface
@@ -237,6 +238,15 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun servidor() = runOnUiThread { configurarServidor() }
+
+        /** ⌨ do cabeçalho: força o teclado virtual do Android a aparecer. */
+        @JavascriptInterface
+        fun mostrarTeclado() = runOnUiThread {
+            web.requestFocus()
+            val teclado = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            @Suppress("DEPRECATION")
+            teclado.showSoftInput(web, InputMethodManager.SHOW_FORCED)
+        }
 
         /** Tela Config: procurar o servidor na rede Wi-Fi. */
         @JavascriptInterface
