@@ -178,7 +178,7 @@
   <aside>
     <div class="marca">
       <svg width="30" height="30" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1f6feb"/><path d="M8 12l8-4 8 4v10l-8 4-8-4z M8 12l8 4 8-4 M16 16v10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
-      <div>Mini WMS<small>RFID · FEFO · Endereçamento</small></div>
+      <div>Mini WMS<small>RFID · FEFO</small></div>
     </div>
     <nav id="menu">
       <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Estoque</a>
@@ -250,15 +250,8 @@
             <div class="card">
               <h2>Nova ordem de recebimento</h2>
               <form id="formOrdem" autocomplete="off">
+                <p class="ajuda">Adicione os produtos que vão chegar. O número da ordem é gerado sozinho.</p>
                 <div class="campos">
-                  <label class="campo"><span>Nota fiscal</span><input id="orDoc" placeholder="Ex.: NF 12345"></label>
-                  <label class="campo"><span>Nº da ordem</span><input id="orNumero" placeholder="Automático"></label>
-                  <label class="campo meio"><span>Fornecedor</span><input id="orFornecedor"></label>
-                  <label class="campo"><span>Endereço de entrada</span><select id="orEndereco" data-enderecos></select></label>
-                </div>
-                <div class="card-titulo" style="margin:14px 0 8px">Itens esperados</div>
-                <div class="campos">
-                  <label class="campo largo"><span>Código de barras / SKU</span><input id="orCodigo" class="leitor" placeholder="Bipe e tecle Enter"></label>
                   <label class="campo largo"><span>Produto</span><select id="orProduto" data-produtos="ativos"></select></label>
                   <label class="campo"><span>Lote (opcional)</span><input id="orLote" style="text-transform:uppercase"></label>
                   <label class="campo"><span>Validade</span><input id="orValidade" type="date"></label>
@@ -977,7 +970,6 @@ async function carregarRecebimento() {
 
 // ======================================================================= ordens de recebimento
 let itensNovaOrdem = [], ordens = [], ordemAtual = null, leiturasVistas = null;
-ligarLeitor($("orCodigo"), $("orProduto"), () => $("orLote").focus());
 $("orProduto").addEventListener("change", () => ajustarPasso($("orQtd"), $("orProduto").value));
 function adicionarItemOrdem() {
   const p = produtoPorId($("orProduto").value), qtd = Number($("orQtd").value), lote = $("orLote").value.trim().toUpperCase();
@@ -985,9 +977,9 @@ function adicionarItemOrdem() {
   if (!(qtd > 0)) return toast("Informe a quantidade esperada", "erro");
   if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || "SEM-LOTE"))) return toast(`${p.sku} lote ${lote} já está na lista`, "erro");
   itensNovaOrdem.push({ produto_id: p.id, lote: lote || "SEM-LOTE", validade: $("orValidade").value || null, quantidade: qtd });
-  ["orCodigo", "orProduto", "orLote", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
+  ["orProduto", "orLote", "orValidade", "orQtd"].forEach((id) => ($(id).value = ""));
   desenharItensOrdem();
-  $("orCodigo").focus();
+  $("orProduto").focus();
 }
 $("orAdicionar").addEventListener("click", adicionarItemOrdem);
 $("orQtd").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); adicionarItemOrdem(); } });
@@ -1001,14 +993,13 @@ function desenharItensOrdem() {
 }
 aoEnviar($("formOrdem"), async () => {
   if (!itensNovaOrdem.length) throw new Error("Adicione pelo menos um item");
-  const r = await api("POST", "/api/recebimentos", { documento: $("orDoc").value, numero: $("orNumero").value,
-    fornecedor: $("orFornecedor").value, endereco_id: Number($("orEndereco").value) || null, itens: itensNovaOrdem });
+  const r = await api("POST", "/api/recebimentos", { itens: itensNovaOrdem });
   toast(`Ordem ${r.numero} criada. No coletor: Recebimento → ${r.numero}`);
   ordemAtual = r.id; leiturasVistas = null;
   await carregarOrdens();
 });
 $("formOrdem").addEventListener("reset", () => setTimeout(() => {
-  itensNovaOrdem = []; desenharItensOrdem(); $("orEndereco").value = enderecoDoca(); $("orDoc").focus();
+  itensNovaOrdem = []; desenharItensOrdem(); $("orProduto").focus();
 }));
 $("orFiltro").addEventListener("change", desenharListaOrdens);
 
@@ -1025,7 +1016,7 @@ function desenharListaOrdens() {
   $("listaOrdens").innerHTML = lista.map((o) => `<li class="item-lista ${o.id === ordemAtual ? "ativo" : ""}" onclick="carregarOrdem(${o.id})" style="display:block">
       <div style="display:flex;gap:8px;align-items:center"><b>${esc(o.numero)}</b>${o.documento ? " · " + esc(o.documento) : ""}
         <span style="margin-left:auto">${seloStatus(o.status === "ABERTO" ? "ABERTO" : o.status === "FINALIZADO" ? "FECHADO" : o.status)}</span></div>
-      <div class="fraco">${esc(o.fornecedor || "sem fornecedor")} · ${o.itens} item(ns) · ${num(o.lidas)} de ${num(o.prevista)}</div>
+      <div class="fraco">${dataHoraBR(o.criado_em).slice(0, 16)} · ${o.itens} item(ns) · ${num(o.lidas)} de ${num(o.prevista)}</div>
       ${o.status === "ABERTO" ? barra(o.lidas, o.prevista) : ""}</li>`).join("")
     || `<li class="vazio">Nenhuma ordem ${f === "ABERTO" ? "aberta" : ""}</li>`;
 }
@@ -1045,8 +1036,7 @@ async function carregarOrdem(id) {
       <span class="acoes">
         ${aberto ? `<button class="sucesso" onclick="finalizarOrdem(this)">Finalizar e dar entrada</button><button onclick="cancelarOrdem(this)">Cancelar ordem</button>` : ""}
       </span></div>
-    <p style="margin:0 0 12px">${r.documento ? `<b>NF:</b> ${esc(r.documento)} · ` : ""}${r.fornecedor ? `<b>Fornecedor:</b> ${esc(r.fornecedor)} · ` : ""}<b>Entrada em:</b> ${esc(r.endereco)}<br>
-      <span class="fraco">Criada ${dataHoraBR(r.criado_em)}${r.finalizado_em ? " · encerrada " + dataHoraBR(r.finalizado_em) : ""}</span></p>
+    <p style="margin:0 0 12px"><span class="fraco">Criada ${dataHoraBR(r.criado_em)}${r.finalizado_em ? " · encerrada " + dataHoraBR(r.finalizado_em) : ""}</span></p>
     <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi"><div class="rotulo">Esperado</div><div class="valor">${num(total)}</div></div>
       <div class="kpi ${lidas >= total ? "sucesso" : "alerta"}"><div class="rotulo">Recebido</div><div class="valor">${num(lidas)}</div></div>
@@ -1482,7 +1472,6 @@ async function iniciar() {
     await carregarCadastros();
   } catch (e) { toast(e.message, "erro"); }
   $("eEndereco").value = enderecoDoca();
-  $("orEndereco").value = enderecoDoca();
   desenharItensPedido();
   desenharItensOrdem();
   irPara(location.hash.slice(1) || "estoque");
