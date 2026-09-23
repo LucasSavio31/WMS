@@ -324,29 +324,64 @@ function processarLeitura(bruto) {
   }
 }
 
-// 1) Campo "Leitura": cada linha (dado + ENTER) é uma leitura.
-leitura.addEventListener("input", () => {
-  if (!leitura.value.includes("\n")) return;
-  const partes = leitura.value.split(/\r?\n/);
-  leitura.value = partes.pop();
-  partes.forEach(processarLeitura);
+// Toda leitura termina sozinha, com ou sem o ENTER do DataWedge: o que chega de uma vez
+// (ou rápido demais para ser gente digitando) é leitura; ~0,1 s depois de parar de chegar,
+// é processada. Digitação do operador (teclado físico ou virtual) continua esperando o ENTER.
+const PAUSA_FIM_LEITURA = 100;   // ms sem chegar nada = fim da leitura
+const DIGITACAO_RAPIDA = 50;     // ms entre teclas: abaixo disso é o leitor, não uma pessoa
+
+// 1) Campo "Leitura": cada linha (dado + ENTER) é uma leitura; sem ENTER, termina pela pausa.
+let rajadaLeitura = { n: 0, bloco: false, ultimo: 0 }, timerLeitura;
+function finalizarLeitura() {
+  clearTimeout(timerLeitura);
+  const v = leitura.value; leitura.value = "";
+  rajadaLeitura = { n: 0, bloco: false, ultimo: 0 };
+  v.split(/\r?\n/).forEach(processarLeitura);
+}
+leitura.addEventListener("input", (ev) => {
+  if (leitura.value.includes("\n")) {
+    const partes = leitura.value.split(/\r?\n/);
+    leitura.value = partes.pop();
+    partes.forEach(processarLeitura);
+    if (!leitura.value) return;
+  }
+  const agora = performance.now();
+  if (agora - rajadaLeitura.ultimo > DIGITACAO_RAPIDA) rajadaLeitura = { n: 0, bloco: false, ultimo: 0 };
+  rajadaLeitura.n++;
+  rajadaLeitura.bloco ||= (ev.data || "").length >= 4;   // DataWedge mandou o código inteiro de uma vez
+  rajadaLeitura.ultimo = agora;
+  clearTimeout(timerLeitura);
+  timerLeitura = setTimeout(() => {
+    if ((rajadaLeitura.bloco || rajadaLeitura.n >= 4) && leitura.value.trim()) finalizarLeitura();
+  }, PAUSA_FIM_LEITURA);
 });
 leitura.addEventListener("keydown", (ev) => {
   if (ev.key !== "Enter") return;
   ev.preventDefault();
-  const v = leitura.value; leitura.value = "";
   if (leitura.inputMode !== "none") tecladoManual(false);   // leitura digitada: fecha o teclado
-  v.split(/\r?\n/).forEach(processarLeitura);
+  finalizarLeitura();
 });
 
-// 2) Leitura que caiu em outro campo (ex.: Lote): chegou de uma vez só...
+// 2) Leitura que caiu em outro campo (ex.: Lote): tira de lá e processa como leitura.
+function leituraNoCampo(el, dado, base) {
+  clearTimeout(el._timerLeitura);
+  el.value = base;
+  el.dataset.antes = base;
+  delete el.dataset.pendente;
+  rajada = { el: null, n: 0, ultimo: 0, base: "" };
+  if (dado) processarLeitura(dado);
+}
+// ...chegou de uma vez só (DataWedge mandou o texto inteiro)...
 document.addEventListener("input", (ev) => {
   const el = ev.target;
   if (!ehEditavel(el)) return;
   const antes = el.dataset.antes ?? "";
   if (ev.inputType !== "insertFromPaste" && el.value.length - antes.length >= 6 && el.value.startsWith(antes)) {
-    el.dataset.pendente = el.value.slice(antes.length);   // o ENTER que vem em seguida confirma que é do leitor
-    el.dataset.base = antes;
+    const dado = el.value.slice(antes.length);
+    el.dataset.pendente = dado;
+    clearTimeout(el._timerLeitura);
+    el._timerLeitura = setTimeout(() => { if (el.dataset.pendente === dado) leituraNoCampo(el, dado, antes); }, PAUSA_FIM_LEITURA);
+    return;
   }
   el.dataset.antes = el.value;
 }, true);
@@ -357,20 +392,21 @@ document.addEventListener("keydown", (ev) => {
   if (!ehEditavel(el)) return;
   const t = performance.now();
   if (ev.key.length === 1) {
-    if (rajada.el !== el || t - rajada.ultimo > 45) rajada = { el, n: 0, base: el.value };
+    if (rajada.el !== el || t - rajada.ultimo > DIGITACAO_RAPIDA) rajada = { el, n: 0, base: el.value };
     rajada.n++; rajada.ultimo = t;
+    clearTimeout(el._timerLeitura);
+    el._timerLeitura = setTimeout(() => {
+      if (rajada.el === el && rajada.n >= 6) leituraNoCampo(el, el.value.slice(rajada.base.length), rajada.base);
+    }, PAUSA_FIM_LEITURA);
     return;
   }
   if (ev.key !== "Enter") return;
-  let dado = null;
-  if (el.dataset.pendente) { dado = el.dataset.pendente; el.value = el.dataset.base; }
-  else if (rajada.el === el && rajada.n >= 6 && t - rajada.ultimo < 120) { dado = el.value.slice(rajada.base.length); el.value = rajada.base; }
-  delete el.dataset.pendente;
+  ev.preventDefault();
+  if (el.dataset.pendente) return leituraNoCampo(el, el.dataset.pendente, el.dataset.antes ?? "");
+  if (rajada.el === el && rajada.n >= 6 && t - rajada.ultimo < 120) return leituraNoCampo(el, el.value.slice(rajada.base.length), rajada.base);
   rajada = { el: null, n: 0, ultimo: 0, base: "" };
   el.dataset.antes = el.value;
-  ev.preventDefault();
-  if (dado) processarLeitura(dado);
-  else if (el.dataset.enter) telas[telaAtual][el.dataset.enter]?.();   // ENTER digitado pelo operador
+  if (el.dataset.enter) telas[telaAtual][el.dataset.enter]?.();   // ENTER digitado pelo operador
 }, true);
 
 // 3) Mantém o foco no campo Leitura (sem abrir o teclado virtual) quando não há outro campo em uso.
