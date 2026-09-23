@@ -22,9 +22,14 @@ Na página **Releases** do repositório (lado direito, "Releases" → última ve
 
 | Arquivo | Onde | Como usar |
 |---|---|---|
-| `WMS-Servidor.exe` | PC com Windows | Coloque numa pasta (ex.: `C:\WMS`) e dê dois cliques. Não precisa instalar nada. O navegador abre sozinho em http://localhost:8000. O banco `estoque.db` é criado na mesma pasta. |
-| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app pergunta o endereço do servidor: digite o que aparece na janela do servidor ("Usar no coletor"). Depois configure o DataWedge (seção 2). |
+| `WMS-Servidor.exe` | PC com Windows (qualquer um, sem instalar nada) | Crie uma pasta (ex.: `C:\WMS`), coloque o `.exe` nela e dê dois cliques. Já vem com tudo (Python, servidor, telas do PC e do coletor). O navegador abre sozinho em http://localhost:8000 e a janela mostra o **endereço para o coletor**. O banco `estoque.db` é criado na mesma pasta: para fazer backup, copie esse arquivo. Para desligar, feche a janela. |
+| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app pergunta o endereço do servidor: digite o que aparece na janela do servidor ("Endereço no coletor"). Depois configure o DataWedge (seção 2). |
 
+- Porta: o servidor usa a 8000. Se ela estiver ocupada, a janela avisa. Para usar outra, abra um Prompt na pasta e rode
+  `set WMS_PORTA=8080` e depois `WMS-Servidor.exe` (no coletor, use o endereço com a porta nova).
+- Para gerar o `.exe` no seu PC: `cd server`, `pip install -r requirements.txt pyinstaller` e
+  `pyinstaller --onefile --name WMS-Servidor --icon icone.ico --add-data "app/static;app/static" --collect-submodules uvicorn wms_servidor.py`
+  (o arquivo sai em `server\dist`).
 - Na primeira execução, o Windows pode mostrar "O Windows protegeu o computador": clique em *Mais informações* e depois em *Executar assim mesmo*.
 - Quando aparecer o aviso do Firewall, clique em **Permitir acesso**. Isso é necessário para o coletor alcançar o PC.
 - O PC e o coletor precisam estar na mesma rede Wi-Fi.

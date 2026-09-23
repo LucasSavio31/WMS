@@ -4,3 +4,6 @@ __pycache__/
 .gradle/
 build/
 local.properties
+
+# Programas gerados (WMS-Servidor.exe, ColetorWMS.apk): ficam na página Releases do GitHub
+/dist/
