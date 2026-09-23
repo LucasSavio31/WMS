@@ -11,6 +11,8 @@
     <!-- usesCleartextTraffic: o servidor do curso usa http (sem https) na rede local -->
     <application
         android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         tools:replace="android:label"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
