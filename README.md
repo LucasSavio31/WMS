@@ -23,7 +23,7 @@ Na página **Releases** do repositório (lado direito, "Releases" → última ve
 | Arquivo | Onde | Como usar |
 |---|---|---|
 | `WMS-Servidor.exe` | PC com Windows (qualquer um, sem instalar nada) | Crie uma pasta (ex.: `C:\WMS`), coloque o `.exe` nela e dê dois cliques. Já vem com tudo (Python, servidor, telas do PC e do coletor). O navegador abre sozinho em http://localhost:8000 e a janela mostra o **endereço para o coletor**. O banco fica em **AppData\Local\MiniWMS\estoque.db** do usuário (pasta que a Proteção contra ransomware do Windows não bloqueia); o caminho aparece na janela. Para fazer backup, copie esse arquivo. Para desligar, feche a janela. |
-| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app **procura o servidor na rede Wi-Fi sozinho**; se não achar, digite o endereço que aparece no topo da tela do PC ("📱 Coletor"). O ⚙ tem "Procurar na rede". Depois configure o DataWedge (seção 2). |
+| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app **procura o servidor na rede Wi-Fi sozinho**; se não achar, digite o endereço que aparece no topo da tela do PC ("📱 Coletor"). O menu **Config** tem "Procurar servidor na rede". Depois configure o DataWedge (seção 2). |
 
 - Porta: o servidor usa a 8000. Se ela estiver ocupada, a janela avisa. Para usar outra, abra um Prompt na pasta e rode
   `set WMS_PORTA=8080` e depois `WMS-Servidor.exe` (no coletor, use o endereço com a porta nova).
@@ -40,14 +40,23 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 
 | Onde | O quê |
 |---|---|
+| PC | **Dash** (primeira tela): um card por local de estoque com a quantidade; clicar no card mostra os itens e quantidades. Botão **Relatório PDF** |
+| PC | **Estoque**: cada item em cada local. Marque os itens, clique em **Mover** e escolha o local de destino (sempre pede confirmação). **Relatório PDF** com os itens de cada local |
+| PC | **Locais**: cadastro dos locais de estoque (armazéns), com nome e descrição. O **Local-01** vem pronto e é o padrão |
 | PC | **Produtos**: cadastro (SKU, descrição, EAN, unidade, mínimo) |
-| PC | **Ordens de recebimento**: nota fiscal, fornecedor e itens esperados (lote e validade opcionais); acompanha as leituras do coletor ao vivo e finaliza |
-| PC | **Estoque**, **Inventário** (resultado e fechamento) e **Histórico** (com CSV) |
+| PC | **Ordens de recebimento**: produto e quantidade esperada; acompanha as leituras do coletor ao vivo e finaliza |
+| PC | **Baixa** (com o EPC ou por quantidade, escolhendo o local), **Inventário** e **Histórico** (com **Relatório PDF** dos movimentos filtrados) |
 | Coletor | **Recebimento**: escolhe a ordem e o item, lê as etiquetas (cada uma vai na hora para o servidor) |
-| Coletor | **Entrada** sem ordem: produto, lote, etiquetas RFID ou quantidade |
-| Coletor | **Baixa automática**: cada etiqueta lida é baixada na hora (antena a 100%); "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade (FEFO) |
+| Coletor | **Entrada** sem ordem: produto da lista, etiquetas RFID ou quantidade |
+| Coletor | **Baixa automática**: escolhe o **motivo** (consumo...) e o **local de onde sai**; cada etiqueta lida é baixada na hora (etiqueta de outro local é ignorada); "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade |
 | Coletor | **Inventário**: inicia no coletor, lê as etiquetas; ao finalizar, etiqueta não lida sai e etiqueta achada volta |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
+| Coletor | **Config**: volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa e Localizar, e servidor (procurar na rede ou digitar) |
+
+**Locais de estoque**: tudo que entra (ordem de recebimento ou entrada) vai para o **Local-01**. Quem não usa
+outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* e leve os itens pela tela
+*Estoque* → marcar → **Mover** (só no PC; as etiquetas RFID vão junto e o movimento fica no histórico como
+TRANSFERENCIA). No coletor fica só a baixa, escolhendo o local de onde os itens saem.
 
 **FEFO** (*First Expired, First Out*): na baixa por quantidade e nos pedidos, o servidor tira primeiro do lote
 que vence antes. Ficam de fora: lotes **vencidos** (a não ser que o motivo da baixa seja `VENCIMENTO`),
@@ -64,9 +73,6 @@ o código de barras do produto) → aperta o gatilho nas etiquetas. Cada etiquet
 O sistema recusa etiqueta já em estoque, já lida em outra ordem e item que já completou a quantidade. *Finalizar*
 (no PC ou no coletor) dá entrada de tudo que foi lido, com a NF como documento, e mostra as divergências.
 
-**Endereçamento**: cada lote fica em um endereço. O lote novo entra na `DOCA-REC` e depois é *armazenado*
-(transferido) para um endereço de estoque. A transferência fica registrada nos movimentos.
-
 **Inventário**: cada contagem (do PC ou do coletor) é gravada. A tela mostra, lote a lote,
 *Sistema × Contado × Diferença*. Ao **fechar**, o saldo do sistema passa a ser o contado
 (lote não contado fica com zero), e cada ajuste fica registrado nos movimentos.
@@ -75,7 +81,7 @@ O sistema recusa etiqueta já em estoque, já lida em outra ordem e item que já
 Para só parar de usar, desmarque *Ativo*.
 
 **Limpar tudo** (menu lateral, grupo *Sistema*): zera o banco para recomeçar uma aula. Opcionalmente mantém
-o cadastro de produtos e endereços e apaga só a movimentação.
+o cadastro de produtos e locais e apaga só a movimentação.
 
 ---|---|---|
 | Cadastro de produtos (SKU, descrição, EAN, mínimo) | ✔ | — |
@@ -133,16 +139,19 @@ o navegador não faz sozinho:
 
 - **RFID**: o app lê as etiquetas pelo SDK da Zebra (o mesmo do 123RFID) e entrega cada EPC para a tela.
 - **Código de barras**: vem pelo **DataWedge**, que "digita" o código na tela.
-- **Gatilho**: é um só para RFID e código de barras. A chave **📡 RFID / ▮▮ Código**, ao lado do campo
-  *Leitura*, mostra o que ele lê. Cada tela escolhe sozinha o modo mais provável (ex.: no Recebimento começa
-  em código para bipar o produto e passa para RFID depois), e um toque na chave troca.
-- **Potência da antena**: 100% em todas as telas.
+- **Gatilho**: é um só para RFID e código de barras. Cada tela escolhe sozinha o que ele lê (ex.: no
+  Recebimento começa em código para bipar o produto e passa para RFID depois).
+- **Potência da antena**: em *Config*, uma para Recebimento/Entrada, uma para Baixa e uma para Localizar
+  (padrão 100%). Inventário sempre a 100%.
+- **Teclado ⌨** (no topo): liga/desliga o teclado. O MC3300 tem teclado físico, e por isso o Gboard esconde
+  as teclas; o app usa um teclado próprio na tela (numérico nos campos de quantidade). Ligado, ele abre
+  ao tocar em qualquer campo; desligado, não aparece.
+- **RFID com o cabo USB**: o leitor da Zebra não lê enquanto carrega ("Charging in Progress"). Use o
+  coletor fora do cabo; para depurar sem cabo: `adb tcpip 5555` e `adb connect <ip-do-coletor>:5555`.
 - Sem barra do Chrome; hora, Wi-Fi e bateria ficam na barra do próprio Android.
 - Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
 
-Telas: Recebimento (RFID ou quantidade), Armazenar (tag/produto e depois a etiqueta do endereço), Baixa
-(RFID ou FEFO por quantidade), Separação de pedidos (confere bipando o produto), Inventário e Consulta
-(tag, produto ou endereço). O botão ⚙ troca o endereço do servidor. Como as telas vêm do servidor,
+Telas: Recebimento, Entrada, Baixa, Inventário, Localizar etiqueta e Config. Como as telas vêm do servidor,
 qualquer melhoria chega ao coletor sem reinstalar o app.
 
 **Como a tela entende cada leitura:** EPC (hexadecimal com 16+ caracteres) = RFID; código igual a um endereço
@@ -164,7 +173,7 @@ O DataWedge fica só com o **código de barras**; o RFID é do app. Os nomes pod
 
 ### Testar sem o coletor
 
-Abra **http://localhost:8000/m** no navegador e digite o código ou o EPC no campo *Leitura* + Enter.
+Abra **http://localhost:8000/m** no navegador e use o ⌨ do topo para digitar um código ou EPC.
 
 ## 3. Alternativa: só o Chrome, sem app
 

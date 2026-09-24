@@ -13,11 +13,11 @@ from typing import Literal, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import db, estoque
+from . import db, estoque, relatorios
 from .estoque import MOTIVOS_BAIXA, ErroEstoque
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -231,14 +231,16 @@ def listar_enderecos(con: Con = Depends(conexao)):
     return db.linhas(con.execute(
         """SELECT e.*, COUNT(l.id) AS lotes, COALESCE(SUM(l.quantidade), 0) AS quantidade
            FROM enderecos e LEFT JOIN lotes l ON l.endereco_id=e.id AND l.quantidade > 0
-           GROUP BY e.id ORDER BY e.tipo <> 'RECEBIMENTO', e.codigo"""))
+           GROUP BY e.id ORDER BY e.id"""))
 
 
 def salvar_endereco(con, e: Endereco, endereco_id=None):
-    codigo = e.codigo.strip().upper()
+    codigo = e.codigo.strip()
+    if con.execute("SELECT 1 FROM enderecos WHERE UPPER(codigo)=UPPER(?) AND id<>?", (codigo, endereco_id or 0)).fetchone():
+        raise ErroEstoque(f"Local {codigo} já cadastrado")
     if endereco_id and not e.ativo and con.execute(
             "SELECT 1 FROM lotes WHERE endereco_id=? AND quantidade > 0", (endereco_id,)).fetchone():
-        raise ErroEstoque(f"Endereço {codigo} tem estoque: transfira os lotes antes de inativar")
+        raise ErroEstoque(f"Local {codigo} tem estoque: mova os itens antes de inativar")
     dados = (codigo, (e.descricao or "").strip() or None, e.tipo, int(e.ativo))
     try:
         if endereco_id:
@@ -246,7 +248,7 @@ def salvar_endereco(con, e: Endereco, endereco_id=None):
             return endereco_id
         return con.execute("INSERT INTO enderecos (codigo, descricao, tipo, ativo) VALUES (?,?,?,?)", dados).lastrowid
     except sqlite3.IntegrityError:
-        raise ErroEstoque(f"Endereço {codigo} já cadastrado")
+        raise ErroEstoque(f"Local {codigo} já cadastrado")
 
 
 @app.post("/api/enderecos")
@@ -259,8 +261,8 @@ def editar_endereco(endereco_id: int, e: Endereco, con: Con = Depends(conexao)):
     atual = con.execute("SELECT * FROM enderecos WHERE id=?", (endereco_id,)).fetchone()
     if not atual:
         raise HTTPException(404, "Endereço não encontrado")
-    if atual["codigo"] == db.DOCA_RECEBIMENTO and (e.codigo.strip().upper() != db.DOCA_RECEBIMENTO or not e.ativo):
-        raise ErroEstoque("A doca de recebimento padrão não pode ser renomeada nem inativada")
+    if atual["codigo"] == db.LOCAL_PADRAO and (e.codigo.strip() != db.LOCAL_PADRAO or not e.ativo):
+        raise ErroEstoque(f"O {db.LOCAL_PADRAO} (local padrão) não pode ser renomeado nem inativado")
     salvar_endereco(con, e, endereco_id)
     return {"ok": True}
 
@@ -268,19 +270,60 @@ def editar_endereco(endereco_id: int, e: Endereco, con: Con = Depends(conexao)):
 @app.delete("/api/enderecos/{endereco_id}")
 def excluir_endereco(endereco_id: int, con: Con = Depends(conexao)):
     e = con.execute("SELECT * FROM enderecos WHERE id=?", (endereco_id,)).fetchone()
-    if e and e["codigo"] == db.DOCA_RECEBIMENTO:
-        raise ErroEstoque("A doca de recebimento padrão não pode ser excluída")
+    if e and e["codigo"] == db.LOCAL_PADRAO:
+        raise ErroEstoque(f"O {db.LOCAL_PADRAO} (local padrão) não pode ser excluído")
+    if con.execute("SELECT 1 FROM lotes WHERE endereco_id=? AND quantidade > 0", (endereco_id,)).fetchone():
+        raise ErroEstoque("O local tem itens: mova os itens antes de excluir")
     if con.execute("SELECT 1 FROM lotes WHERE endereco_id=?", (endereco_id,)).fetchone():
-        raise ErroEstoque("Endereço já foi usado por lotes: em vez de excluir, marque como inativo")
+        raise ErroEstoque("O local já teve movimentação: em vez de excluir, marque como inativo")
     con.execute("DELETE FROM enderecos WHERE id=?", (endereco_id,))
     return {"ok": True}
+
+
+# ================================================================ Dash, mover itens e relatórios
+class ItemMover(BaseModel):
+    produto_id: int
+    local_id: int
+
+
+class Mover(BaseModel):
+    itens: list[ItemMover]
+    destino_id: int
+
+
+@app.get("/api/dash")
+def dash(con: Con = Depends(conexao)):
+    """Cada local com a quantidade total e os itens (Dash do PC)."""
+    return estoque.estoque_por_local(con)
+
+
+@app.post("/api/mover")
+def mover(m: Mover, con: Con = Depends(conexao)):
+    """Move itens de um local para outro (só pelo PC)."""
+    return estoque.mover_itens(con, [i.model_dump() for i in m.itens], m.destino_id)
+
+
+@app.get("/api/relatorios/estoque.pdf", include_in_schema=False)
+def relatorio_estoque(con: Con = Depends(conexao)):
+    return Response(relatorios.pdf_estoque(estoque.estoque_por_local(con)), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="estoque_{db.hoje()}.pdf"'})
+
+
+@app.get("/api/relatorios/movimentos.pdf", include_in_schema=False)
+def relatorio_movimentos(produto_id: Optional[int] = None, tipo: Optional[str] = None, de: Optional[str] = None,
+                         ate: Optional[str] = None, busca: Optional[str] = None, con: Con = Depends(conexao)):
+    movs = filtrar_movimentos(con, produto_id, tipo, de, ate, busca, 5000)
+    filtros = " ".join(x for x in (f"· tipo {tipo}" if tipo else "", f"· de {de}" if de else "",
+                                     f"· até {ate}" if ate else "", f"· busca '{busca}'" if busca else "") if x)
+    return Response(relatorios.pdf_movimentos(movs, filtros), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="historico_{db.hoje()}.pdf"'})
 
 
 # ================================================================ posição de estoque e lotes
 SQL_ESTOQUE = """
     SELECT p.id AS produto_id, p.sku, p.descricao, p.unidade, p.estoque_min, p.ativo,
            l.id AS lote_id, l.lote, l.validade, l.quantidade, l.status,
-           e.codigo AS endereco, e.tipo AS tipo_endereco,
+           e.id AS endereco_id, e.codigo AS endereco, e.tipo AS tipo_endereco,
            CAST(julianday(l.validade) - julianday(?) AS INTEGER) AS dias_para_vencer,
            (SELECT COUNT(*) FROM tags t WHERE t.lote_id=l.id AND t.status='ATIVA') AS tags,
            (SELECT COALESCE(SUM(r.quantidade), 0) FROM reservas r WHERE r.lote_id=l.id) AS reservado
@@ -422,14 +465,16 @@ class Baixa(BaseModel):
     quantidade: float = 0
     motivo: Motivo = "CONSUMO"
     documento: Optional[str] = None
+    endereco_id: Optional[int] = None     # local de onde saem os itens (vazio: qualquer local)
     origem: Origem = "PC"
     meio: Meio = "MANUAL"
 
 
 @app.get("/api/fefo")
-def fefo(produto_id: int, quantidade: float, motivo: str = "CONSUMO", con: Con = Depends(conexao)):
+def fefo(produto_id: int, quantidade: float, motivo: str = "CONSUMO", endereco_id: Optional[int] = None,
+         con: Con = Depends(conexao)):
     """Mostra de quais lotes a baixa vai sair, sem baixar nada."""
-    return estoque.sugerir_fefo(con, produto_id, quantidade, usar_vencidos=(motivo == "VENCIMENTO"))
+    return estoque.sugerir_fefo(con, produto_id, quantidade, usar_vencidos=(motivo == "VENCIMENTO"), endereco_id=endereco_id)
 
 
 @app.post("/api/baixas")
@@ -440,7 +485,7 @@ def baixa(b: Baixa, con: Con = Depends(conexao)):
         for epc in b.epcs:
             con.execute("SAVEPOINT tag")
             try:
-                resultado.append({"ok": True, **estoque.baixa_tag(con, epc, b.motivo, b.origem, b.documento)})
+                resultado.append({"ok": True, **estoque.baixa_tag(con, epc, b.motivo, b.origem, b.documento, b.endereco_id)})
                 con.execute("RELEASE tag")
             except ErroEstoque as erro:
                 con.execute("ROLLBACK TO tag")
@@ -450,7 +495,7 @@ def baixa(b: Baixa, con: Con = Depends(conexao)):
     if b.lote_id:
         return estoque.baixa_lote(con, b.lote_id, b.quantidade, b.motivo, b.origem, b.meio, b.documento)
     p = estoque.buscar_produto(con, b.produto_id, b.codigo)
-    return estoque.baixa_quantidade(con, p["id"], b.quantidade, b.motivo, b.origem, b.meio, b.documento)
+    return estoque.baixa_quantidade(con, p["id"], b.quantidade, b.motivo, b.origem, b.meio, b.documento, b.endereco_id)
 
 
 # ================================================================ ordens de recebimento

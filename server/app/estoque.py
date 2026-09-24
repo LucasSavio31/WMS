@@ -28,8 +28,8 @@ def fmt(q) -> str:
 
 
 def nome_item(sku, lote) -> str:
-    """"LEITE lote L1", ou só "LEITE" quando não se usa lote (SEM-LOTE)."""
-    return sku if not lote or lote == "SEM-LOTE" else f"{sku} lote {lote}"
+    """Nome do item nas mensagens (o lote não aparece mais: cada item fica num local)."""
+    return sku
 
 
 # ----------------------------------------------------------------- validações
@@ -88,17 +88,17 @@ def buscar_endereco(con, endereco_id=None, codigo=None):
     if endereco_id:
         e = con.execute("SELECT * FROM enderecos WHERE id=?", (endereco_id,)).fetchone()
     else:
-        e = con.execute("SELECT * FROM enderecos WHERE codigo=?", ((codigo or db.DOCA_RECEBIMENTO).strip().upper(),)).fetchone()
+        e = con.execute("SELECT * FROM enderecos WHERE UPPER(codigo)=UPPER(?)", ((codigo or db.LOCAL_PADRAO).strip(),)).fetchone()
     if not e:
-        raise ErroEstoque(f"Endereço não encontrado: {codigo or endereco_id}")
+        raise ErroEstoque(f"Local não encontrado: {codigo or endereco_id}")
     if not e["ativo"]:
-        raise ErroEstoque(f"Endereço {e['codigo']} está inativo")
+        raise ErroEstoque(f"Local {e['codigo']} está inativo")
     return e
 
 
 def buscar_tag(con, epc):
     t = con.execute(
-        """SELECT t.epc, t.status, l.id AS lote_id, l.lote, l.validade, l.status AS status_lote,
+        """SELECT t.epc, t.status, l.id AS lote_id, l.lote, l.validade, l.status AS status_lote, l.endereco_id,
                   p.id AS produto_id, p.sku, p.descricao, e.codigo AS endereco
            FROM tags t JOIN lotes l ON l.id=t.lote_id JOIN produtos p ON p.id=l.produto_id
            LEFT JOIN enderecos e ON e.id=l.endereco_id
@@ -192,7 +192,7 @@ def movimentar(con, tipo, lote_id, quantidade, origem, meio, motivo=None, epc=No
     """Altera o saldo de um lote e grava o histórico."""
     lote = buscar_lote(con, lote_id)
     if lote["quantidade"] + quantidade < 0:
-        raise ErroEstoque(f"Saldo insuficiente{'' if lote['lote'] == 'SEM-LOTE' else ' no lote ' + lote['lote']} (saldo {fmt(lote['quantidade'])})")
+        raise ErroEstoque(f"Saldo insuficiente (saldo {fmt(lote['quantidade'])})")
     con.execute("UPDATE lotes SET quantidade = quantidade + ? WHERE id=?", (quantidade, lote_id))
     registrar(con, tipo, lote_id, quantidade, origem, meio, motivo, epc, documento)
 
@@ -205,7 +205,9 @@ def entrada(con, produto_id, lote, validade, quantidade=0, epcs=(), origem="PC",
     Lote novo vai para o endereço informado ou, sem endereço, para a doca de recebimento.
     """
     p = produto_ativo(con, produto_id)
-    lote = (lote or "").strip().upper() or "SEM-LOTE"
+    local = buscar_endereco(con, endereco_id)
+    endereco_id = local["id"]
+    lote = (lote or "").strip().upper() or local["codigo"]   # sem lote: um por item e local (nome do local)
     validade = normalizar_data(validade)
     epcs = sorted({e.strip().upper() for e in epcs if e and e.strip()})
     if epcs:
@@ -221,12 +223,11 @@ def entrada(con, produto_id, lote, validade, quantidade=0, epcs=(), origem="PC",
             con.execute("UPDATE lotes SET validade=? WHERE id=?", (validade, lote_id))
         if endereco_id and existente["endereco_id"] != endereco_id:
             atual = buscar_lote(con, lote_id)["endereco"]
-            raise ErroEstoque(f"Lote {lote} já está no endereço {atual}. Dê entrada lá e transfira depois.")
+            raise ErroEstoque(f"Lote {lote} já está no local {atual}. Dê entrada lá e mova depois.")
     else:
-        endereco = buscar_endereco(con, endereco_id)
         lote_id = con.execute(
             "INSERT INTO lotes (produto_id, lote, validade, endereco_id, criado_em) VALUES (?,?,?,?,?)",
-            (p["id"], lote, validade, endereco["id"], db.agora())).lastrowid
+            (p["id"], lote, validade, endereco_id, db.agora())).lastrowid
 
     for epc in epcs:
         t = con.execute("SELECT status FROM tags WHERE epc=?", (epc,)).fetchone()
@@ -246,7 +247,7 @@ def entrada(con, produto_id, lote, validade, quantidade=0, epcs=(), origem="PC",
 
 
 # ----------------------------------------------------------------- baixa
-def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False, usar_etiquetadas=True):
+def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False, usar_etiquetadas=True, endereco_id=None):
     """Quanto tirar de cada lote, começando pelo que vence primeiro.
 
     Primeiro saem as unidades SEM etiqueta; se não bastar, as COM etiqueta RFID
@@ -256,7 +257,8 @@ def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False, usar_etiqueta
     """
     p = buscar_produto(con, produto_id)
     validar_quantidade(p, quantidade)
-    lotes = [l for l in lotes_fefo(con, produto_id) if vencido(l) == usar_vencidos]
+    lotes = [l for l in lotes_fefo(con, produto_id) if vencido(l) == usar_vencidos
+             and (not endereco_id or l["endereco_id"] == endereco_id)]   # só do local escolhido
     falta, plano = quantidade, []
     for com_etiqueta in ((False, True) if usar_etiquetadas else (False,)):
         for l in lotes:
@@ -276,9 +278,9 @@ def sugerir_fefo(con, produto_id, quantidade, usar_vencidos=False, usar_etiqueta
                       f"disponível {fmt(quantidade - falta)}, pedido {fmt(quantidade)}")
 
 
-def baixa_quantidade(con, produto_id, quantidade, motivo, origem="PC", meio="MANUAL", documento=None):
+def baixa_quantidade(con, produto_id, quantidade, motivo, origem="PC", meio="MANUAL", documento=None, endereco_id=None):
     """Baixa por quantidade: o sistema escolhe os lotes por FEFO (e as etiquetas, se precisar)."""
-    plano = sugerir_fefo(con, produto_id, quantidade, usar_vencidos=(motivo == "VENCIMENTO"))
+    plano = sugerir_fefo(con, produto_id, quantidade, usar_vencidos=(motivo == "VENCIMENTO"), endereco_id=endereco_id)
     for item in plano:
         if item["etiquetas"]:
             epcs = [r["epc"] for r in con.execute(
@@ -308,11 +310,13 @@ def baixa_lote(con, lote_id, quantidade, motivo, origem="PC", meio="MANUAL", doc
                        "endereco": l["endereco"], "quantidade": quantidade}], "avisos": []}
 
 
-def baixa_tag(con, epc, motivo, origem="COLETOR", documento=None):
+def baixa_tag(con, epc, motivo, origem="COLETOR", documento=None, endereco_id=None):
     """Baixa por RFID: a tag diz exatamente qual lote está saindo."""
     t = buscar_tag(con, epc)
     if t["status"] != "ATIVA":
         raise ErroEstoque(f"Tag {t['epc']} já foi baixada")
+    if endereco_id and t["endereco_id"] != endereco_id:
+        raise ErroEstoque(f"Tag {t['epc']} está em outro local ({t['endereco']})")
     if t["status_lote"] == "BLOQUEADO" and motivo not in MOTIVOS_DESCARTE:
         raise ErroEstoque(f"Lote {t['lote']} está BLOQUEADO (só sai por AVARIA, PERDA ou VENCIMENTO)")
     con.execute("UPDATE tags SET status='BAIXADA' WHERE epc=?", (t["epc"],))
@@ -653,7 +657,7 @@ def criar_recebimento(con, itens, documento=None, fornecedor=None, endereco_id=N
     linhas = []
     for item in itens:
         p = produto_ativo(con, item.get("produto_id"), item.get("codigo"))
-        lote = (item.get("lote") or "").strip().upper() or "SEM-LOTE"
+        lote = (item.get("lote") or "").strip().upper()   # vazio: entra no local da ordem
         validar_quantidade(p, item.get("quantidade"))
         if any(l[0] == p["id"] and l[1] == lote for l in linhas):
             raise ErroEstoque(f"{nome_item(p['sku'], lote)} repetido no recebimento")
@@ -819,3 +823,55 @@ def incluir_sobras(con, inventario_id, produto_id, epcs=None, origem="PC"):
         con.execute(f"UPDATE inventario_desconhecidas SET produto_id=? WHERE inventario_id=? AND epc IN ({','.join('?' * len(pendentes))})",
                     (produto_id, inventario_id, *pendentes))
     return {"incluidas": len(pendentes), "sku": r["sku"], "saldo": r["saldo"]}
+
+
+# ----------------------------------------------------------------- locais (armazéns)
+def estoque_por_local(con):
+    """Para cada local: itens com quantidade (é o Dash e o relatório de estoque)."""
+    locais = db.linhas(con.execute("SELECT * FROM enderecos WHERE ativo=1 ORDER BY id"))
+    for local in locais:
+        local["itens"] = db.linhas(con.execute(
+            """SELECT p.id AS produto_id, p.sku, p.descricao, p.unidade, SUM(l.quantidade) AS quantidade,
+                      SUM((SELECT COUNT(*) FROM tags t WHERE t.lote_id=l.id AND t.status='ATIVA')) AS etiquetas
+               FROM lotes l JOIN produtos p ON p.id=l.produto_id
+               WHERE l.endereco_id=? AND l.quantidade > 0
+               GROUP BY p.id ORDER BY p.sku""", (local["id"],)))
+        local["quantidade"] = sum(i["quantidade"] for i in local["itens"])
+    return locais
+
+
+def mover_itens(con, itens, destino_id, origem="PC"):
+    """Move toda a quantidade de cada item (no local de origem) para o local de destino.
+
+    itens: [{"produto_id": .., "local_id": ..}]. As etiquetas RFID vão junto.
+    """
+    destino = buscar_endereco(con, destino_id)
+    movidos = 0
+    for item in itens:
+        if item["local_id"] == destino["id"]:
+            continue
+        origem_local = buscar_endereco(con, item["local_id"])
+        lotes = con.execute("SELECT * FROM lotes WHERE produto_id=? AND endereco_id=? AND quantidade > 0",
+                            (item["produto_id"], origem_local["id"])).fetchall()
+        if not lotes:
+            continue
+        alvo = con.execute("SELECT * FROM lotes WHERE produto_id=? AND lote=?",
+                           (item["produto_id"], destino["codigo"])).fetchone()
+        if alvo and alvo["endereco_id"] != destino["id"]:
+            if alvo["quantidade"] > 0:
+                raise ErroEstoque(f"Conflito de nome de lote {destino['codigo']}")
+            con.execute("UPDATE lotes SET endereco_id=? WHERE id=?", (destino["id"], alvo["id"]))
+        alvo_id = alvo["id"] if alvo else con.execute(
+            "INSERT INTO lotes (produto_id, lote, endereco_id, criado_em) VALUES (?,?,?,?)",
+            (item["produto_id"], destino["codigo"], destino["id"], db.agora())).lastrowid
+        for l in lotes:
+            q = l["quantidade"] - qtd_reservada(con, l["id"])
+            if q <= 0:
+                continue
+            movimentar(con, "TRANSFERENCIA", l["id"], -q, origem, "MANUAL", f"para {destino['codigo']}")
+            movimentar(con, "TRANSFERENCIA", alvo_id, q, origem, "MANUAL", f"de {origem_local['codigo']}")
+            con.execute("UPDATE tags SET lote_id=? WHERE lote_id=? AND status='ATIVA'", (alvo_id, l["id"]))
+            movidos += 1
+    if not movidos:
+        raise ErroEstoque("Nada para mover")
+    return {"movidos": movidos, "destino": destino["codigo"]}

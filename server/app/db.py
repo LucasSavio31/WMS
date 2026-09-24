@@ -32,9 +32,9 @@ LOCAIS_ANTIGOS = [os.path.join(pasta_documentos(), "MiniWMS", "estoque.db"),
 if getattr(sys, "frozen", False):
     LOCAIS_ANTIGOS.append(os.path.join(os.path.dirname(sys.executable), "estoque.db"))
 
-# Endereço criado automaticamente: toda mercadoria recebida chega aqui
-# e depois é armazenada (transferida) para um endereço de estoque.
-DOCA_RECEBIMENTO = "DOCA-REC"
+# Local de estoque padrão (criado automaticamente). Quem não usa outros locais trabalha só com ele.
+LOCAL_PADRAO = "Local-01"
+DOCA_RECEBIMENTO = LOCAL_PADRAO   # nome antigo, mantido para o código que já usava
 
 SCHEMA = """
 -- Cadastro de produtos
@@ -279,10 +279,21 @@ def migrar(con) -> None:
         for nome, tipo in colunas.items():
             if nome not in existentes:
                 con.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")
-    con.execute("INSERT OR IGNORE INTO enderecos (codigo, descricao, tipo) VALUES (?, 'Doca de recebimento', 'RECEBIMENTO')",
-                (DOCA_RECEBIMENTO,))
-    doca = con.execute("SELECT id FROM enderecos WHERE codigo=?", (DOCA_RECEBIMENTO,)).fetchone()[0]
-    con.execute("UPDATE lotes SET endereco_id=? WHERE endereco_id IS NULL", (doca,))
+    # Local padrão "Local-01" (a antiga doca DOCA-REC vira o Local-01)
+    if not con.execute("SELECT 1 FROM enderecos WHERE UPPER(codigo)=UPPER(?)", (LOCAL_PADRAO,)).fetchone():
+        antiga = con.execute("SELECT id FROM enderecos WHERE codigo='DOCA-REC'").fetchone()
+        if antiga:
+            con.execute("UPDATE enderecos SET codigo=?, descricao='Local padrão', tipo='ARMAZENAGEM', ativo=1 WHERE id=?",
+                        (LOCAL_PADRAO, antiga[0]))
+        else:
+            con.execute("INSERT INTO enderecos (codigo, descricao, tipo) VALUES (?, 'Local padrão', 'ARMAZENAGEM')", (LOCAL_PADRAO,))
+    padrao = con.execute("SELECT id FROM enderecos WHERE UPPER(codigo)=UPPER(?)", (LOCAL_PADRAO,)).fetchone()[0]
+    con.execute("UPDATE lotes SET endereco_id=? WHERE endereco_id IS NULL", (padrao,))
+    # Sem lote: cada item tem um "lote" por local, com o nome do local (SEM-LOTE antigo vira o nome do local)
+    con.execute("""UPDATE lotes SET lote = (SELECT e.codigo FROM enderecos e WHERE e.id = lotes.endereco_id)
+                   WHERE lote = 'SEM-LOTE' AND NOT EXISTS (
+                     SELECT 1 FROM lotes l2 WHERE l2.produto_id = lotes.produto_id
+                       AND l2.lote = (SELECT e.codigo FROM enderecos e WHERE e.id = lotes.endereco_id))""")
 
 
 def linhas(cur) -> list[dict]:

@@ -30,7 +30,25 @@
   /* ---------- layout ---------- */
   .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
   aside { background: var(--lateral); color: var(--lateral-texto); padding: 14px 10px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
-  .logo-senai { display: block; width: 100%; max-width: 196px; height: auto; margin: 2px auto 10px; border-radius: 4px; }
+  /* Dash: um card por local */
+  .locais { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .local { background: var(--painel); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: var(--sombra); padding: 14px 16px;
+           cursor: pointer; text-align: left; display: block; width: 100%; font-weight: 400; white-space: normal; }
+  .local:hover { border-color: var(--primaria); }
+  .local.aberto { border-color: var(--primaria); box-shadow: 0 0 0 2px var(--primaria) inset; }
+  .local .nome { font-weight: 700; font-size: 15px; }
+  .local .desc { color: var(--texto-2); font-size: 12px; min-height: 16px; }
+  .local .valor { font-size: 28px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .local .rodape { color: var(--texto-2); font-size: 12px; }
+  /* Estoque: botão Mover com a lista de locais */
+  .mover { position: relative; }
+  .mover .lista-locais { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--painel); border: 1px solid var(--borda);
+           border-radius: var(--raio); box-shadow: 0 8px 24px #0003; min-width: 220px; padding: 4px; }
+  .mover .lista-locais button { display: block; width: 100%; text-align: left; border: 0; font-weight: 400; white-space: normal; }
+  .mover .lista-locais button:hover { background: var(--painel-2); }
+  .mover .lista-locais .fraco { font-size: 12px; }
+  td.sel, th.sel { width: 34px; text-align: center; }
+  td.sel input, th.sel input { width: auto; }
   .marca { display: flex; align-items: center; gap: 10px; color: #fff; font-weight: 700; font-size: 17px; padding: 4px 8px 16px; }
   .marca svg { flex: none; }
   .marca small { display: block; font-weight: 400; font-size: 11px; color: var(--lateral-texto); }
@@ -180,14 +198,15 @@
 <div class="app">
   <!-- ======================================================= MENU LATERAL -->
   <aside>
-    <img src="/static/senai.png" alt="SENAI" class="logo-senai">
     <div class="marca">
       <svg width="30" height="30" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1f6feb"/><path d="M8 12l8-4 8 4v10l-8 4-8-4z M8 12l8 4 8-4 M16 16v10" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
       <div>Mini WMS</div>
     </div>
     <nav id="menu">
+      <a href="#dash" data-pagina="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h7v7H4z M13 4h7v4h-7z M13 10h7v10h-7z M4 13h7v7H4z"/></svg>Dash</a>
       <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Estoque</a>
       <a href="#produtos" data-pagina="produtos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14 M7 5v14 M11 5v14 M14 5v14 M18 5v14 M20 5v14"/></svg>Produtos</a>
+      <a href="#enderecos" data-pagina="enderecos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V9l9-6 9 6v12 M7 21v-8h10v8 M7 17h10"/></svg>Locais</a>
       <a href="#ordens" data-pagina="ordens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M12 11v6 M9 14l3 3 3-3"/></svg>Ordens de recebimento<span class="contador" id="cntRec"></span></a>
       <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa</a>
       <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
@@ -231,20 +250,32 @@
         </div>
       </section>
 
+      <!-- =================================================== DASH -->
+      <section class="pagina" id="dash" data-titulo="Dash" data-sub="Quantidade em cada local de estoque. Clique num local para ver os itens">
+        <div class="barra"><span class="fraco" id="dashTotal"></span>
+          <div class="direita"><a class="botao" href="/api/relatorios/estoque.pdf" target="_blank">📄 Relatório PDF</a></div></div>
+        <div class="locais" id="dashLocais"></div>
+        <div class="card" id="dashDetalhe" hidden>
+          <div class="card-titulo"><span id="dashTitulo"></span><span class="acoes"><button class="pequeno" id="dashFechar">Fechar</button></span></div>
+          <div class="tabela"><table>
+            <thead><tr><th>Item</th><th>Descrição</th><th class="num">Quantidade</th><th class="num">Com etiqueta RFID</th></tr></thead>
+            <tbody id="tabDash"></tbody></table></div>
+        </div>
+      </section>
+
       <!-- =================================================== ESTOQUE -->
-      <section class="pagina" id="estoque" data-titulo="Posição de estoque" data-sub="">
+      <section class="pagina" id="estoque" data-titulo="Estoque" data-sub="Cada item em cada local. Marque os itens e use Mover para levar a outro local">
         <div class="barra">
-          <input type="search" id="estBusca" placeholder="Buscar SKU, produto ou lote">
-          <select id="estFiltro">
-            <option value="">Todos os lotes</option>
-            <option value="validade">Vencidos e a vencer (30 dias)</option>
-            <option value="minimo">Produtos abaixo do mínimo</option>
-          </select>
+          <input type="search" id="estBusca" placeholder="Buscar item ou local">
+          <select id="estFiltro"><option value="">Todos os locais</option></select>
           <label class="check"><input type="checkbox" id="estSemSaldo"> Mostrar produtos sem saldo</label>
-          <div class="direita"><a class="botao" href="/api/estoque.csv">Exportar CSV</a></div>
+          <div class="direita">
+            <div class="mover"><button class="primario" id="btMover" disabled>Mover ▾</button>
+              <div class="lista-locais" id="listaMover" hidden></div></div>
+            <a class="botao" href="/api/relatorios/estoque.pdf" target="_blank">📄 Relatório PDF</a></div>
         </div>
         <div class="tabela"><table>
-          <thead><tr><th>Lote</th><th>Validade</th><th class="num">Saldo</th><th class="num">Com etiqueta RFID</th></tr></thead>
+          <thead><tr><th class="sel"><input type="checkbox" id="estTodos" title="Marcar todos"></th><th>Item</th><th>Local</th><th class="num">Saldo</th><th class="num">Com etiqueta RFID</th></tr></thead>
           <tbody id="tabEstoque"></tbody></table></div>
       </section>
 
@@ -344,12 +375,13 @@
           </div>
           <div class="card">
             <h2>Sem etiqueta</h2>
-            <p class="ajuda">Escolha o produto e a quantidade: sai do lote que vence primeiro.</p>
+            <p class="ajuda">Escolha o produto, a quantidade e o local de onde sai.</p>
             <form id="formBaixa" autocomplete="off">
               <div class="campos">
                 <label class="campo largo"><span>Produto</span><select id="bProduto" data-produtos="todos" required></select></label>
                 <label class="campo"><span>Quantidade</span><input id="bQtd" type="number" min="0" step="any" required></label>
                 <label class="campo"><span>Motivo</span><select id="bMotivo" data-motivos required></select></label>
+                <label class="campo largo"><span>Local de onde sai</span><select id="bLocal" data-enderecos required></select></label>
               </div>
               <div id="bPrevia" class="aviso"></div>
               <div class="botoes">
@@ -466,7 +498,7 @@
           <label class="check">Até <input type="date" id="mAte"></label>
           <button class="primario" type="submit">Filtrar</button>
           <button type="reset">Limpar</button>
-          <span class="direita"><a class="botao" id="mCsv" href="/api/movimentos.csv">Exportar CSV</a></span>
+          <span class="direita"><a class="botao" id="mCsv" href="/api/relatorios/movimentos.pdf" target="_blank">📄 Relatório PDF</a></span>
         </form>
         <div class="tabela"><table>
           <thead><tr><th>Data/hora</th><th>Tipo</th><th>Produto</th><th>Lote</th><th>Endereço</th><th class="num">Qtd</th><th class="num">Saldo lote</th><th>Documento</th><th>Motivo</th><th>EPC</th><th>Origem</th></tr></thead>
@@ -508,28 +540,26 @@
       </section>
 
       <!-- =================================================== ENDEREÇOS -->
-      <section class="pagina" id="enderecos" data-titulo="Endereços" data-sub="Locais do armazém: doca de recebimento, ruas/prateleiras e área de expedição">
+      <section class="pagina" id="enderecos" data-titulo="Locais de estoque" data-sub="Armazéns onde o estoque fica. O Local-01 é o padrão: quem não usa outros locais trabalha só com ele">
         <div class="grade g-form">
           <div class="card">
-            <h2 id="enTitulo">Novo endereço</h2>
-            <p class="ajuda">Padrão sugerido: RUA-PRÉDIO-NÍVEL, por exemplo A-01-02.</p>
+            <h2 id="enTitulo">Novo local</h2>
+            <p class="ajuda">Tudo que entra (recebimento e entrada) vai para o Local-01. Para levar itens a outro local, use Mover na tela Estoque.</p>
             <form id="formEndereco" autocomplete="off">
               <input type="hidden" id="enId">
               <div class="campos">
-                <label class="campo"><span>Código <b class="obrig">*</b></span><input id="enCodigo" required maxlength="20" style="text-transform:uppercase" placeholder="A-01-01"></label>
-                <label class="campo"><span>Tipo</span><select id="enTipo">
-                  <option value="ARMAZENAGEM">Armazenagem</option><option value="RECEBIMENTO">Recebimento</option><option value="EXPEDICAO">Expedição</option></select></label>
-                <label class="campo largo"><span>Descrição</span><input id="enDesc" placeholder="Ex.: Rua A, prateleira 1, nível 1"></label>
+                <label class="campo largo"><span>Nome <b class="obrig">*</b></span><input id="enCodigo" required maxlength="40" placeholder="Ex.: Local-02, Almoxarifado"></label>
+                <label class="campo largo"><span>Descrição</span><input id="enDesc" placeholder="Ex.: Galpão 2, fundos"></label>
                 <label class="check largo"><input type="checkbox" id="enAtivo" checked> Ativo</label>
               </div>
               <div class="botoes">
-                <button class="primario" type="submit">Salvar endereço</button>
+                <button class="primario" type="submit">Salvar local</button>
                 <button type="reset">Limpar</button>
               </div>
             </form>
           </div>
           <div class="tabela"><table>
-            <thead><tr><th>Código</th><th>Tipo</th><th>Descrição</th><th class="num">Lotes</th><th class="num">Quantidade</th><th>Status</th><th></th></tr></thead>
+            <thead><tr><th>Nome</th><th>Descrição</th><th class="num">Quantidade</th><th>Status</th><th></th></tr></thead>
             <tbody id="tabEnderecos"></tbody></table></div>
         </div>
       </section>
@@ -606,14 +636,14 @@ async function api(metodo, url, corpo) {
   return dados;
 }
 
-function toast(texto, tipo = "ok", tempo = 4000) {
+function toast(texto, tipo = "ok") {
   const t = document.createElement("div");
   t.className = "toast " + (tipo === "ok" ? "" : tipo);
   t.textContent = texto;
   $("toasts").append(t);
-  setTimeout(() => t.remove(), tipo === "erro" ? Math.max(tempo, 6000) : tempo);
+  setTimeout(() => t.remove(), 3000);   // toda notificação some em 3 s
 }
-const avisar = (avisos) => (avisos || []).forEach((a) => toast(a, "alerta", 7000));
+const avisar = (avisos) => (avisos || []).forEach((a) => toast(a, "alerta"));
 
 /** Executa uma ação de botão: trava o botão enquanto envia e mostra o erro, se houver. */
 async function executar(botao, acao) {
@@ -685,7 +715,7 @@ function preencherSelects() {
   document.querySelectorAll("select[data-enderecos]").forEach((s) => {
     const atual = s.value;
     s.innerHTML = enderecos.filter((e) => e.ativo).map((e) =>
-      `<option value="${e.id}">${esc(e.codigo)}${e.tipo !== "ARMAZENAGEM" ? " (" + e.tipo.toLowerCase() + ")" : ""}${e.descricao ? " · " + esc(e.descricao) : ""}</option>`).join("");
+      `<option value="${e.id}">${esc(e.codigo)}${e.descricao ? " · " + esc(e.descricao) : ""}</option>`).join("");
     if (atual) s.value = atual;
   });
   document.querySelectorAll("select[data-motivos]").forEach((s) => {
@@ -722,7 +752,7 @@ const ajustarPasso = (input, produtoId) => {
 // ======================================================================= navegação
 let paginaAtual = "painel";
 function irPara(pagina) {
-  if (!$(pagina) || !$(pagina).classList.contains("pagina")) pagina = "estoque";
+  if (!$(pagina) || !$(pagina).classList.contains("pagina")) pagina = "dash";
   paginaAtual = pagina;
   document.querySelectorAll("section.pagina").forEach((s) => s.classList.toggle("ativo", s.id === pagina));
   document.querySelectorAll("#menu a[data-pagina]").forEach((a) => a.classList.toggle("ativo", a.dataset.pagina === pagina));
@@ -781,51 +811,121 @@ const linhaMovCurta = (m) => `<tr>
 let estoqueLinhas = [], filtroEstoqueInicial = "";
 async function carregarEstoque() {
   if (filtroEstoqueInicial) { $("estFiltro").value = filtroEstoqueInicial; filtroEstoqueInicial = ""; }
-  estoqueLinhas = await api("GET", "/api/estoque");
+  [estoqueLinhas] = await Promise.all([api("GET", "/api/estoque"), carregarCadastros()]);
   desenharEstoque();
 }
+/** Estoque: uma linha por item e local (soma os lotes). */
+const marcados = new Set();   // "produto_id:local_id"
 function desenharEstoque() {
   const busca = $("estBusca").value.trim().toLowerCase();
-  const filtro = $("estFiltro").value;
+  const filtroLocal = Number($("estFiltro").value) || 0;
   const semSaldo = $("estSemSaldo").checked;
-  const grupos = new Map();
+  const atual = $("estFiltro").value;
+  $("estFiltro").innerHTML = '<option value="">Todos os locais</option>' +
+    enderecos.filter((e) => e.ativo).map((e) => `<option value="${e.id}">${esc(e.codigo)}</option>`).join("");
+  $("estFiltro").value = atual;
+  const linhas = new Map();
   estoqueLinhas.forEach((l) => {
-    if (!grupos.has(l.produto_id)) grupos.set(l.produto_id, { p: l, lotes: [], total: 0 });
-    if (l.lote_id) { const g = grupos.get(l.produto_id); g.lotes.push(l); g.total += l.quantidade; }
+    if (!l.lote_id) {
+      if (semSaldo && !estoqueLinhas.some((x) => x.produto_id === l.produto_id && x.lote_id)) linhas.set("p" + l.produto_id, { ...l, quantidade: 0, tags: 0, vazio: true });
+      return;
+    }
+    const k = l.produto_id + ":" + l.endereco_id;
+    const g = linhas.get(k) || linhas.set(k, { ...l, chave: k, quantidade: 0, tags: 0 }).get(k);
+    g.quantidade += l.quantidade; g.tags += l.tags;
   });
-  let html = "", nLotes = 0;
-  for (const g of grupos.values()) {
-    const abaixo = g.p.estoque_min > 0 && g.total < g.p.estoque_min;
-    const lotes = g.lotes.filter((l) => {
-      if (busca && ![g.p.sku, g.p.descricao, l.lote, l.endereco].some((t) => String(t || "").toLowerCase().includes(busca))) return false;
-      if (filtro === "vencidos") return l.dias_para_vencer !== null && l.dias_para_vencer < 0;
-      if (filtro === "validade") return l.dias_para_vencer !== null && l.dias_para_vencer <= 30;
-      if (filtro === "bloqueados") return l.status === "BLOQUEADO";
-      if (filtro === "doca") return l.tipo_endereco === "RECEBIMENTO";
-      if (filtro === "reservados") return l.reservado > 0;
-      if (filtro === "minimo") return abaixo;
-      return true;
-    });
-    const produtoCasa = !busca || [g.p.sku, g.p.descricao].some((t) => t.toLowerCase().includes(busca));
-    const mostrarVazio = semSaldo && !g.lotes.length && produtoCasa && (!filtro || (filtro === "minimo" && abaixo));
-    if (!lotes.length && !mostrarVazio) continue;
-    html += `<tr class="grupo"><td colspan="2">${esc(g.p.sku)} · ${esc(g.p.descricao)}${g.p.ativo ? "" : ' <span class="selo">inativo</span>'}
-        ${g.p.estoque_min > 0 ? `<span class="${abaixo ? "selo perigo" : "fraco"}">mínimo ${num(g.p.estoque_min)}${abaixo ? " · repor" : ""}</span>` : ""}</td>
-      <td class="num">${num(g.total)} ${esc(g.p.unidade)}</td><td></td></tr>`;
-    if (!lotes.length) html += `<tr><td colspan="4" class="fraco" style="padding-left:24px">Sem saldo em estoque</td></tr>`;
-    lotes.forEach((l) => {
-      nLotes++;
-      const disp = Math.max(l.quantidade - l.reservado - l.tags, 0);
-      html += `<tr>
-        <td style="padding-left:24px"><b>${esc(l.lote)}</b></td>
-        <td>${seloValidade(l.validade, l.dias_para_vencer)}</td>
-        <td class="num">${num(l.quantidade)}</td>
-        <td class="num">${l.tags ? num(l.tags) : ""}</td></tr>`;
-    });
-  }
-  $("tabEstoque").innerHTML = html || vazio(4, filtro || busca ? "Nada encontrado com esse filtro" : "Estoque vazio. Cadastre os produtos e crie uma ordem de recebimento.");
+  const lista = [...linhas.values()].filter((l) =>
+    (!filtroLocal || l.endereco_id === filtroLocal) &&
+    (!busca || [l.sku, l.descricao, l.endereco].some((t) => String(t || "").toLowerCase().includes(busca))));
+  [...marcados].forEach((k) => { if (!linhas.has(k)) marcados.delete(k); });
+  $("tabEstoque").innerHTML = lista.map((l) => `<tr>
+      <td class="sel">${l.vazio ? "" : `<input type="checkbox" data-chave="${l.chave}" ${marcados.has(l.chave) ? "checked" : ""}>`}</td>
+      <td><b>${esc(l.sku)}</b> <span class="fraco">${esc(l.descricao)}</span></td>
+      <td>${l.vazio ? '<span class="fraco">sem saldo</span>' : `<span class="cod">${esc(l.endereco)}</span>`}</td>
+      <td class="num">${num(l.quantidade)} ${esc(l.unidade)}</td>
+      <td class="num">${l.tags ? num(l.tags) : ""}</td></tr>`).join("")
+    || vazio(5, busca || filtroLocal ? "Nada encontrado com esse filtro" : "Estoque vazio. Cadastre os produtos e crie uma ordem de recebimento.");
+  $("tabEstoque").querySelectorAll("input[data-chave]").forEach((c) => c.addEventListener("change", () => {
+    if (c.checked) marcados.add(c.dataset.chave); else marcados.delete(c.dataset.chave);
+    estadoMover();
+  }));
+  const caixas = [...$("tabEstoque").querySelectorAll("input[data-chave]")];
+  $("estTodos").checked = caixas.length > 0 && caixas.every((c) => c.checked);
+  estadoMover();
 }
+function estadoMover() {
+  $("btMover").disabled = !marcados.size;
+  $("btMover").textContent = marcados.size ? `Mover ${marcados.size} ▾` : "Mover ▾";
+  if (!marcados.size) $("listaMover").hidden = true;
+}
+$("estTodos").addEventListener("change", () => {
+  $("tabEstoque").querySelectorAll("input[data-chave]").forEach((c) => {
+    c.checked = $("estTodos").checked;
+    if (c.checked) marcados.add(c.dataset.chave); else marcados.delete(c.dataset.chave);
+  });
+  estadoMover();
+});
+$("btMover").addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  const destinos = enderecos.filter((e) => e.ativo);
+  $("listaMover").innerHTML = '<div class="fraco" style="padding:6px 10px">Mover para:</div>' + destinos.map((e) =>
+    `<button type="button" data-destino="${e.id}"><b>${esc(e.codigo)}</b>${e.descricao ? `<div class="fraco">${esc(e.descricao)}</div>` : ""}</button>`).join("");
+  $("listaMover").hidden = !$("listaMover").hidden;
+});
+document.addEventListener("click", (ev) => { if (!ev.target.closest(".mover")) $("listaMover").hidden = true; });
+$("listaMover").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-destino]");
+  if (!b) return;
+  $("listaMover").hidden = true;
+  const destino = enderecos.find((e) => e.id === Number(b.dataset.destino));
+  const itens = [...marcados].map((k) => { const [produto_id, local_id] = k.split(":").map(Number); return { produto_id, local_id }; });
+  const nomes = itens.map((i) => {
+    const l = estoqueLinhas.find((x) => x.produto_id === i.produto_id && x.endereco_id === i.local_id);
+    const q = estoqueLinhas.filter((x) => x.produto_id === i.produto_id && x.endereco_id === i.local_id).reduce((s, x) => s + x.quantidade, 0);
+    return `• ${l.sku} (${num(q)} ${l.unidade}) de ${l.endereco}`;
+  });
+  if (!(await confirmar("Mover itens", `Mover para ${destino.codigo}:\n${nomes.join("\n")}`, "Mover", "primario"))) return;
+  await executar($("btMover"), async () => {
+    const r = await api("POST", "/api/mover", { itens, destino_id: destino.id });
+    toast(`${r.movidos} item(ns) movido(s) para ${r.destino}`);
+    marcados.clear();
+    atualizar(true);
+  });
+});
+
 ["estBusca", "estFiltro", "estSemSaldo"].forEach((id) => $(id).addEventListener("input", desenharEstoque));
+
+// ======================================================================= Dash
+let dashLocais = [], dashAberto = null;
+async function carregarDash() {
+  dashLocais = await api("GET", "/api/dash");
+  const total = dashLocais.reduce((s, l) => s + l.quantidade, 0);
+  $("dashTotal").textContent = `${dashLocais.length} local(is) · ${num(total)} unidade(s) em estoque`;
+  $("dashLocais").innerHTML = dashLocais.map((l) => `<button class="local ${l.id === dashAberto ? "aberto" : ""}" data-local="${l.id}">
+      <div class="nome">${esc(l.codigo)}</div><div class="desc">${esc(l.descricao || "")}</div>
+      <div class="valor">${num(l.quantidade)}</div>
+      <div class="rodape">unidade(s) · ${l.itens.length} item(ns)</div></button>`).join("")
+    || '<p class="fraco">Nenhum local cadastrado.</p>';
+  desenharDetalheDash();
+}
+function desenharDetalheDash() {
+  const l = dashLocais.find((x) => x.id === dashAberto);
+  $("dashDetalhe").hidden = !l;
+  if (!l) return;
+  $("dashTitulo").textContent = `${l.codigo}${l.descricao ? " · " + l.descricao : ""}: ${num(l.quantidade)} unidade(s)`;
+  $("tabDash").innerHTML = l.itens.map((i) => `<tr><td><b>${esc(i.sku)}</b></td><td>${esc(i.descricao)}</td>
+      <td class="num">${num(i.quantidade)} ${esc(i.unidade)}</td><td class="num">${i.etiquetas ? num(i.etiquetas) : ""}</td></tr>`).join("")
+    || vazio(4, "Nenhum item neste local");
+}
+$("dashLocais").addEventListener("click", (ev) => {
+  const b = ev.target.closest("[data-local]");
+  if (!b) return;
+  dashAberto = dashAberto === Number(b.dataset.local) ? null : Number(b.dataset.local);
+  document.querySelectorAll("#dashLocais .local").forEach((x) => x.classList.toggle("aberto", Number(x.dataset.local) === dashAberto));
+  desenharDetalheDash();
+  if (dashAberto) $("dashDetalhe").scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+$("dashFechar").addEventListener("click", () => { dashAberto = null; carregarDash(); });
 
 // ---- ações de lote (diálogos)
 let loteSelecionado = null;
@@ -977,8 +1077,8 @@ function adicionarItemOrdem() {
   const p = produtoPorId($("orProduto").value), qtd = Number($("orQtd").value), lote = "";
   if (!p) return toast("Escolha o produto do item", "erro");
   if (!(qtd > 0)) return toast("Informe a quantidade esperada", "erro");
-  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || "SEM-LOTE"))) return toast(`${p.sku} já está na lista`, "erro");
-  itensNovaOrdem.push({ produto_id: p.id, lote: lote || "SEM-LOTE", validade: null, quantidade: qtd });
+  if (itensNovaOrdem.some((i) => i.produto_id === p.id && i.lote === (lote || ""))) return toast(`${p.sku} já está na lista`, "erro");
+  itensNovaOrdem.push({ produto_id: p.id, lote: lote || "", validade: null, quantidade: qtd });
   ["orProduto", "orQtd"].forEach((id) => ($(id).value = ""));
   desenharItensOrdem();
   $("orProduto").focus();
@@ -1069,7 +1169,7 @@ async function finalizarOrdem(botao) {
   await executar(botao, async () => {
     const r = await api("POST", `/api/recebimentos/${ordemAtual}/finalizar`);
     toast(`Ordem ${r.numero} finalizada: entrada no estoque feita`);
-    r.divergencias.forEach((x) => toast("Divergência: " + x, "alerta", 8000));
+    r.divergencias.forEach((x) => toast("Divergência: " + x, "alerta"));
     await carregarOrdens();
   });
 }
@@ -1081,17 +1181,17 @@ async function cancelarOrdem(botao) {
 // ======================================================================= baixa
 let temporizadorPrevia;
 function agendarPrevia() { clearTimeout(temporizadorPrevia); temporizadorPrevia = setTimeout(previaFefo, 300); }
-["bProduto", "bQtd", "bMotivo"].forEach((id) => $(id).addEventListener("input", agendarPrevia));
+["bProduto", "bQtd", "bMotivo", "bLocal"].forEach((id) => $(id).addEventListener("input", agendarPrevia));
 $("bProduto").addEventListener("change", () => ajustarPasso($("bQtd"), $("bProduto").value));
 async function previaFefo() {
   const produto = $("bProduto").value, qtd = Number($("bQtd").value);
   const caixa = $("bPrevia");
   if (!produto || !(qtd > 0)) { caixa.innerHTML = ""; return; }
   try {
-    const plano = await api("GET", `/api/fefo?produto_id=${produto}&quantidade=${qtd}&motivo=${$("bMotivo").value}`);
+    const plano = await api("GET", `/api/fefo?produto_id=${produto}&quantidade=${qtd}&motivo=${$("bMotivo").value}&endereco_id=${$("bLocal").value}`);
     caixa.className = "aviso";
-    caixa.innerHTML = `<b>Vai sair (primeiro o que vence antes):</b><table><tr><th>Lote</th><th>Validade</th><th>Unidades</th><th class="num">Qtd</th></tr>` +
-      plano.map((l) => `<tr><td>${l.lote !== "SEM-LOTE" ? esc(l.lote) : "-"}</td><td>${dataBR(l.validade)}</td>
+    caixa.innerHTML = `<b>Vai sair:</b><table><tr><th>Local</th><th>Unidades</th><th class="num">Qtd</th></tr>` +
+      plano.map((l) => `<tr><td>${esc(l.endereco)}</td>
         <td>${l.etiquetas ? "com etiqueta (o sistema escolhe qual)" : "sem etiqueta"}</td><td class="num">${num(l.quantidade)}</td></tr>`).join("") + "</table>";
   } catch (e) {
     caixa.className = "aviso perigo";
@@ -1100,12 +1200,12 @@ async function previaFefo() {
 }
 aoEnviar($("formBaixa"), async () => {
   const p = produtoPorId($("bProduto").value);
-  if (!(await confirmar("Confirmar baixa", `Baixar ${num($("bQtd").value)} ${p.unidade} de ${p.sku} · ${p.descricao}\nMotivo: ${$("bMotivo").value}`, "Confirmar baixa"))) return false;
+  if (!(await confirmar("Confirmar baixa", `Baixar ${num($("bQtd").value)} ${p.unidade} de ${p.sku} · ${p.descricao}\nLocal: ${$("bLocal").selectedOptions[0]?.text}\nMotivo: ${$("bMotivo").value}`, "Confirmar baixa"))) return false;
   const r = await api("POST", "/api/baixas", {
     produto_id: p.id, quantidade: Number($("bQtd").value), motivo: $("bMotivo").value,
-    meio: "MANUAL",
+    meio: "MANUAL", endereco_id: Number($("bLocal").value) || null,
   });
-  toast("Baixa feita: " + r.lotes.map((l) => `${num(l.quantidade)}${l.lote !== "SEM-LOTE" ? " do lote " + l.lote : ""}` +
+  toast("Baixa feita: " + r.lotes.map((l) => `${num(l.quantidade)} de ${l.endereco || "estoque"}` +
     (l.epcs?.length ? ` (etiqueta${l.epcs.length > 1 ? "s" : ""} ${l.epcs.map((e) => "…" + e.slice(-6)).join(", ")})` : "")).join(", "));
 });
 $("formBaixa").addEventListener("reset", () => setTimeout(() => { $("bPrevia").innerHTML = ""; $("bProduto").focus(); }));
@@ -1292,7 +1392,7 @@ async function carregarInventario() {
   const f = $("iFiltro").value;
   const linhas = d.confronto.filter((c) => (f === "dif" ? c.diferenca !== 0 : f === "nao" ? !c.foi_contado : true));
   $("tabConfronto").innerHTML = linhas.map((c) => `<tr>
-    <td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span>${c.lote !== "SEM-LOTE" ? ` <span class="fraco">· lote ${esc(c.lote)}</span>` : ""}</td>
+    <td>${esc(c.sku)} <span class="fraco">${esc(c.descricao)}</span></td>
     <td class="num">${num(c.sistema)}</td><td class="num">${c.foi_contado ? num(c.contado) : '<span class="fraco">não contado</span>'}</td>
     <td class="num ${qtdClasse(c.diferenca)}">${c.diferenca ? sinal(c.diferenca) : "0"}</td></tr>`).join("") || vazio(4, "Nada para mostrar");
   const situacao = { OK: '<span class="selo sucesso">lida</span>', FALTA: '<span class="selo perigo">falta · não lida</span>',
@@ -1354,7 +1454,7 @@ function filtrosMov() {
 }
 async function carregarMovimentos() {
   const q = filtrosMov();
-  $("mCsv").href = "/api/movimentos.csv?" + q;
+  $("mCsv").href = "/api/relatorios/movimentos.pdf?" + q;
   q.set("limite", 500);
   const lista = await api("GET", "/api/movimentos?" + q);
   $("tabMovimentos").innerHTML = lista.map((m) => `<tr>
@@ -1418,32 +1518,32 @@ async function excluirProduto(id, botao) {
 // ======================================================================= endereços
 function desenharEnderecos() {
   $("tabEnderecos").innerHTML = enderecos.map((e) => `<tr class="${e.ativo ? "" : "inativo"}">
-    <td><b>${esc(e.codigo)}</b></td><td>${esc(e.tipo)}</td><td>${esc(e.descricao)}</td>
-    <td class="num">${num(e.lotes)}</td><td class="num">${num(e.quantidade)}</td>
+    <td><b>${esc(e.codigo)}</b>${e.codigo === "Local-01" ? ' <span class="selo info">padrão</span>' : ""}</td><td>${esc(e.descricao)}</td>
+    <td class="num">${num(e.quantidade)}</td>
     <td>${e.ativo ? '<span class="selo sucesso">Ativo</span>' : '<span class="selo">Inativo</span>'}</td>
     <td class="acoes"><button class="pequeno" onclick="editarEndereco(${e.id})">Editar</button>
       <button class="pequeno" onclick="excluirEndereco(${e.id}, this)">Excluir</button></td></tr>`).join("");
 }
 function editarEndereco(id) {
   const e = enderecos.find((x) => x.id === id);
-  $("enId").value = e.id; $("enCodigo").value = e.codigo; $("enTipo").value = e.tipo; $("enDesc").value = e.descricao || ""; $("enAtivo").checked = !!e.ativo;
+  $("enId").value = e.id; $("enCodigo").value = e.codigo; $("enDesc").value = e.descricao || ""; $("enAtivo").checked = !!e.ativo;
   $("enTitulo").textContent = `Editando ${e.codigo}`;
   $("enCodigo").focus();
 }
 aoEnviar($("formEndereco"), async () => {
-  const dados = { codigo: $("enCodigo").value, tipo: $("enTipo").value, descricao: $("enDesc").value, ativo: $("enAtivo").checked };
+  const dados = { codigo: $("enCodigo").value.trim(), tipo: "ARMAZENAGEM", descricao: $("enDesc").value, ativo: $("enAtivo").checked };
   const id = $("enId").value;
   if (id) await api("PUT", "/api/enderecos/" + id, dados); else await api("POST", "/api/enderecos", dados);
-  toast(`Endereço ${dados.codigo.toUpperCase()} salvo`);
+  toast(`Local ${dados.codigo} salvo`);
   await carregarCadastros(); desenharEnderecos();
 });
-$("formEndereco").addEventListener("reset", () => setTimeout(() => { $("enId").value = ""; $("enTitulo").textContent = "Novo endereço"; $("enCodigo").focus(); }));
+$("formEndereco").addEventListener("reset", () => setTimeout(() => { $("enId").value = ""; $("enTitulo").textContent = "Novo local"; $("enCodigo").focus(); }));
 async function excluirEndereco(id, botao) {
   const e = enderecos.find((x) => x.id === id);
-  if (!(await confirmar("Excluir endereço", `Excluir o endereço ${e.codigo}?`, "Excluir"))) return;
+  if (!(await confirmar("Excluir local", `Excluir o local ${e.codigo}?`, "Excluir"))) return;
   await executar(botao, async () => {
     await api("DELETE", "/api/enderecos/" + id);
-    toast(`Endereço ${e.codigo} excluído`, "alerta");
+    toast(`Local ${e.codigo} excluído`, "alerta");
     await carregarCadastros(); desenharEnderecos();
   });
 }
@@ -1478,7 +1578,7 @@ $("formLimpar").addEventListener("submit", (ev) => {
 // ======================================================================= atualização automática
 // O que o coletor faz aparece aqui sozinho (a tela consulta o servidor a cada 5 s).
 const carregadores = {
-  painel: carregarPainel, estoque: carregarEstoque, ordens: carregarOrdens, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
+  painel: carregarPainel, dash: carregarDash, estoque: carregarEstoque, ordens: carregarOrdens, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
   inventario: async () => { await carregarInventarios(); await carregarInventario(); }, movimentos: carregarMovimentos,
   produtos: async () => { await carregarCadastros(); desenharProdutos(); },
   enderecos: async () => { await carregarCadastros(); desenharEnderecos(); },
@@ -1494,7 +1594,7 @@ async function relogio() {
     const s = await api("GET", "/api/status");
     $("relogio").textContent = "Servidor " + dataHoraBR(s.data_hora).slice(0, 16);
     if (s.coletor) $("enderecoColetor").innerHTML = `📱 Coletor: <b>${esc(s.coletor)}</b>`;
-    if (s.aviso && !avisoBancoMostrado) { avisoBancoMostrado = true; toast(s.aviso, "alerta", 20000); }
+    if (s.aviso && !avisoBancoMostrado) { avisoBancoMostrado = true; toast(s.aviso, "alerta"); }
     if (paginaAtual !== "painel") contadoresMenu(await api("GET", "/api/resumo"));
   } catch { /* conexao() já mostra o aviso */ }
 }
@@ -1507,7 +1607,7 @@ async function iniciar() {
   $("eEndereco").value = enderecoDoca();
   desenharItensPedido();
   desenharItensOrdem();
-  irPara(location.hash.slice(1) || "estoque");
+  irPara(location.hash.slice(1) || "dash");
   relogio();
   setInterval(() => atualizar(false), 5000);
   setInterval(relogio, 15000);

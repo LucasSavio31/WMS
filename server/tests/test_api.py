@@ -154,9 +154,9 @@ def test_entrada_na_doca_e_transferencia(api):
     pid = produto(api)
     r = api.post("/api/entradas", json={"produto_id": pid, "lote": "L1", "validade": "31/12/2030",
                                         "quantidade": 6, "documento": "NF 123"})
-    assert r.json()["endereco"] == "DOCA-REC"
-    end = api.post("/api/enderecos", json={"codigo": "a-01-01"}).json()["id"]
-    assert api.post("/api/enderecos", json={"codigo": "A-01-01"}).status_code == 400   # duplicado
+    assert r.json()["endereco"] == "Local-01"
+    end = api.post("/api/enderecos", json={"codigo": "A-01-01"}).json()["id"]
+    assert api.post("/api/enderecos", json={"codigo": "a-01-01"}).status_code == 400   # duplicado (maiúsc./minúsc.)
 
     l1 = lote_id(api, "L1")
     assert api.post(f"/api/lotes/{l1}/transferir", json={"endereco": "A-01-01"}).json()["para"] == "A-01-01"
@@ -187,7 +187,7 @@ def test_resumo_e_csv(api):
     pid = produto(api)
     api.post("/api/entradas", json={"produto_id": pid, "lote": "V", "validade": "2020-01-01", "quantidade": 2})
     r = api.get("/api/resumo").json()
-    assert r["vencidos"] == 1 and r["entradas_hoje"] == 2 and r["na_doca"] == 1
+    assert r["vencidos"] == 1 and r["entradas_hoje"] == 2
     csv = api.get("/api/estoque.csv")
     assert csv.status_code == 200 and "LEITE;Leite 1L" in csv.text
 
@@ -212,7 +212,7 @@ def test_migra_banco_da_versao_anterior(tmp_path, monkeypatch):
     from app.main import app
     with TestClient(app) as c:
         linha = next(l for l in c.get("/api/estoque").json() if l["lote"] == "L")
-        assert linha["endereco"] == "DOCA-REC" and linha["status"] == "LIBERADO"
+        assert linha["endereco"] == "Local-01" and linha["status"] == "LIBERADO"
         assert c.post("/api/baixas", json={"produto_id": 1, "quantidade": 1}).status_code == 200
 
 
@@ -266,7 +266,7 @@ def test_limpar_tudo(api):
     # Tudo: sobra só a doca padrão, e os códigos recomeçam do 1
     api.post("/api/limpar-tudo", json={})
     assert api.get("/api/produtos").json() == []
-    assert [e["codigo"] for e in api.get("/api/enderecos").json()] == ["DOCA-REC"]
+    assert [e["codigo"] for e in api.get("/api/enderecos").json()] == ["Local-01"]
     assert produto(api) == 1
     api.post("/api/entradas", json={"produto_id": 1, "lote": "N", "quantidade": 2})
     assert api.get("/api/resumo").json()["unidades"] == 2
@@ -303,7 +303,7 @@ def test_ordem_de_recebimento_online(api):
     assert len(d["leituras"]) == 3 and api.get("/api/resumo").json()["recebimentos_abertos"] == 2
 
     f = api.post(f"/api/recebimentos/{rec}/finalizar").json()
-    assert f["divergencias"] == ["CAFE lote C1: recebido 4 de 5"]
+    assert f["divergencias"] == ["CAFE: recebido 4 de 5"]
     assert not r.json()["tags"][0].get("excedente")
     assert saldo(api, "L1") == 2 and saldo(api, "C1") == 4
     assert api.get("/api/tags/A1").json()["status"] == "ATIVA"
@@ -322,15 +322,15 @@ def test_inventario_por_rfid_e_estorno(api):
     rec = api.post("/api/recebimentos", json={"itens": [{"produto_id": pid, "quantidade": 4}]}).json()["id"]  # lote opcional
     api.post(f"/api/recebimentos/{rec}/leituras", json={"epcs": ["T1", "T2", "T3", "T4"]})
     api.post(f"/api/recebimentos/{rec}/finalizar")
-    assert saldo(api, "SEM-LOTE") == 4
+    assert saldo(api, "Local-01") == 4
     # unidade sem etiqueta no mesmo produto (não entra no inventário RFID)
     api.post("/api/entradas", json={"produto_id": pid, "lote": "CX", "quantidade": 5})
 
     # baixa por leitura e estorno (leitura por engano)
     api.post("/api/baixas", json={"epcs": ["T4"], "origem": "COLETOR", "meio": "RFID"})
-    assert saldo(api, "SEM-LOTE") == 3
+    assert saldo(api, "Local-01") == 3
     assert api.post("/api/tags/T4/estornar").status_code == 200
-    assert saldo(api, "SEM-LOTE") == 4 and api.get("/api/tags/T4").json()["status"] == "ATIVA"
+    assert saldo(api, "Local-01") == 4 and api.get("/api/tags/T4").json()["status"] == "ATIVA"
     assert api.post("/api/tags/T4/estornar").status_code == 400          # já está em estoque
     api.post("/api/baixas", json={"epcs": ["T3"]})                        # T3 sai de verdade
 
@@ -341,7 +341,7 @@ def test_inventario_por_rfid_e_estorno(api):
     conf = {c["lote"]: c for c in d["confronto"]}
     assert "CX" not in conf                                               # sem etiqueta: fora da conta
     assert [(e["epc"], e["situacao"]) for e in d["etiquetas"]] == [("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
-    assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
+    assert (conf["Local-01"]["sistema"], conf["Local-01"]["contado"]) == (3, 3)
     # 2 etiquetas que o sistema não conhece: contam como sobra, em vermelho
     r = api.post(f"/api/inventarios/{inv}/contagens", json={"epcs": ["X9", "X8", "X9"], "origem": "COLETOR", "meio": "RFID"})
     assert all(t["ok"] for t in r.json()["tags"])
@@ -354,14 +354,14 @@ def test_inventario_por_rfid_e_estorno(api):
     # fechado: continua mostrando o que foi lido na hora (não o estoque de agora)
     api.post("/api/baixas", json={"epcs": ["T1"]})
     conf = {c["lote"]: c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"]}
-    assert (conf["SEM-LOTE"]["sistema"], conf["SEM-LOTE"]["contado"]) == (3, 3)
+    assert (conf["Local-01"]["sistema"], conf["Local-01"]["contado"]) == (3, 3)
     guardadas = [(e["epc"], e["situacao"]) for e in api.get(f"/api/inventarios/{inv}").json()["etiquetas"]]
     assert guardadas == [("X8", "SOBRA"), ("X9", "SOBRA"), ("T4", "FALTA"), ("T3", "SOBRA"), ("T1", "OK"), ("T2", "OK")]
     assert [c for c in api.get(f"/api/inventarios/{inv}").json()["confronto"] if c["lote_id"] is None][0]["contado"] == 2
     # incluir as 2 a mais no estoque (inventário já fechado)
     r = api.post(f"/api/inventarios/{inv}/incluir-sobras", json={"produto_id": pid})
     assert r.status_code == 200 and r.json()["incluidas"] == 2
-    assert api.get("/api/tags/X8").json()["status"] == "ATIVA" and saldo(api, "SEM-LOTE") == 4   # 2 (T1 baixada agora) + 2
+    assert api.get("/api/tags/X8").json()["status"] == "ATIVA" and saldo(api, "Local-01") == 4   # 2 (T1 baixada agora) + 2
     assert all(e["descricao"] == "incluída no estoque" for e in api.get(f"/api/inventarios/{inv}").json()["etiquetas"][:2])
     assert api.post(f"/api/inventarios/{inv}/incluir-sobras", json={"produto_id": pid}).status_code == 400   # nada mais a incluir
 
@@ -373,4 +373,41 @@ def test_inventario_por_rfid_e_estorno(api):
     assert [(e["epc"], e["situacao"]) for e in d2["etiquetas"] if e["epc"] == "Z1"] == [("Z1", "OK")]
     api.post("/api/tags/T1/estornar")
     assert api.get("/api/tags/T4").json()["status"] == "BAIXADA" and api.get("/api/tags/T3").json()["status"] == "ATIVA"
-    assert saldo(api, "SEM-LOTE") == 6 and saldo(api, "CX") == 5   # 4 + Z1 incluída + T1 estornada
+    assert saldo(api, "Local-01") == 6 and saldo(api, "CX") == 5   # 4 + Z1 incluída + T1 estornada
+
+
+def test_locais_dash_mover_e_baixa_por_local(api):
+    pid = produto(api)
+    padrao = api.get("/api/enderecos").json()[0]
+    assert padrao["codigo"] == "Local-01"
+    assert api.delete(f"/api/enderecos/{padrao['id']}").status_code == 400   # o padrão fica
+    b = api.post("/api/enderecos", json={"codigo": "Armazém B", "descricao": "Fundos"}).json()["id"]
+    api.post("/api/entradas", json={"produto_id": pid, "quantidade": 3, "epcs": []})
+    api.post("/api/entradas", json={"produto_id": pid, "epcs": ["M1", "M2"]})
+    d = {l["codigo"]: l for l in api.get("/api/dash").json()}
+    assert d["Local-01"]["quantidade"] == 5 and d["Armazém B"]["itens"] == []
+
+    # mover tudo do item para o Armazém B (etiquetas vão junto)
+    r = api.post("/api/mover", json={"itens": [{"produto_id": pid, "local_id": padrao["id"]}], "destino_id": b})
+    assert r.status_code == 200, r.text
+    d = {l["codigo"]: l for l in api.get("/api/dash").json()}
+    assert d["Local-01"]["quantidade"] == 0 and d["Armazém B"]["quantidade"] == 5
+    assert d["Armazém B"]["itens"][0]["etiquetas"] == 2
+    assert api.get("/api/tags/M1").json()["endereco"] == "Armazém B"
+    assert api.post("/api/mover", json={"itens": [{"produto_id": pid, "local_id": padrao["id"]}], "destino_id": b}).status_code == 400
+
+    # baixa no local errado não sai; no local certo sai
+    r = api.post("/api/baixas", json={"epcs": ["M1"], "motivo": "CONSUMO", "endereco_id": padrao["id"]}).json()
+    assert r["tags"][0]["ok"] is False
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 1, "endereco_id": padrao["id"]}).status_code == 400
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 4, "endereco_id": b}).status_code == 200
+    d = {l["codigo"]: l for l in api.get("/api/dash").json()}
+    assert d["Armazém B"]["quantidade"] == 1
+
+
+def test_relatorios_pdf(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "quantidade": 2, "documento": "Ação ç"})
+    for url in ("/api/relatorios/estoque.pdf", "/api/relatorios/movimentos.pdf?tipo=ENTRADA"):
+        r = api.get(url)
+        assert r.status_code == 200 and r.content.startswith(b"%PDF")

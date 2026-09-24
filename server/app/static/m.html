@@ -60,7 +60,6 @@
   body { background: var(--bg); color: var(--texto); font: 15px/1.35 Roboto, "Segoe UI", system-ui, Arial, sans-serif; display: flex; flex-direction: column; max-width: 560px; margin: 0 auto; }
 
   header { background: var(--topo); color: #fff; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 8px; min-height: 50px; flex: none; }
-  header .logo-senai { height: 22px; width: auto; border-radius: 3px; flex: none; }
   header h1 { font-size: 15px; line-height: 1.15; margin: 0; flex: 1; min-width: 0; font-weight: 600; }   /* quebra entre palavras em vez de cortar */
   header button { background: none; border: none; color: #fff; font-size: 22px; width: 40px; height: 42px; border-radius: 50%; flex: none; padding: 0; }
   header #voltar { width: 28px; margin: 0 -4px 0 -2px; }   /* logo fica sempre na borda esquerda; a seta vem depois */
@@ -81,6 +80,23 @@
   /* Campo invisível de captura do DataWedge (precisa existir e poder ter foco) */
   .captura { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; overflow: hidden; }
   header #modo, header #teclado { width: 34px; font-size: 18px; border-radius: 8px; }
+  .potencia { margin: 8px 0 4px; }
+  /* Teclado na tela (o Gboard não mostra as teclas no MC3300 por causa do teclado físico) */
+  #tecladoTela { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #1b2230; padding: 4px 3px 6px;
+                 box-shadow: 0 -4px 14px #0006; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  #tecladoTela[hidden] { display: none; }
+  #tecladoTela .linha { display: flex; gap: 3px; margin-top: 3px; }
+  #tecladoTela button { flex: 1; min-width: 0; height: 44px; border: 0; border-radius: 6px; background: #3a4458; color: #fff;
+                        font: 600 18px system-ui, sans-serif; padding: 0; }
+  #tecladoTela button:active { background: #5b6b8a; }
+  #tecladoTela button.esp { background: #283144; font-size: 15px; }
+  #tecladoTela button.ok { background: var(--primaria); }
+  #tecladoTela.numerico button { height: 52px; font-size: 22px; }
+  body.com-teclado main { padding-bottom: 250px; }
+  dialog #tecladoTela { position: fixed; }
+  body.com-teclado dialog[open] { margin: 70px auto auto; }
+  .potencia .dir { float: right; }
+  header #teclado.ligado { background: var(--primaria); }
   header #modo.barras { background: #ffb74d33; }
   header #modo.lendo { background: var(--primaria); animation: pulsa .6s infinite alternate; }
   @keyframes pulsa { to { opacity: .55; } }
@@ -173,19 +189,18 @@
   </span>
 </div>
 <header>
-  <img src="/static/senai.png" alt="SENAI" class="logo-senai">
   <button id="voltar" aria-label="Voltar" style="display:none">←</button>
   <h1 id="titulo">WMS Coletor</h1>
   <button id="btTelaCheia" aria-label="Tela cheia" title="Tela cheia" hidden>⛶</button>
   <button id="modo" class="rfid" title="O gatilho lê: RFID ou código de barras (toque para trocar)" hidden>📡</button>
   <button id="teclado" title="Abrir o teclado">⌨</button>
-  <button id="btConfig" aria-label="Config" title="Config">⚙</button>
 </header>
 <!-- Campo invisível que recebe o que o DataWedge "digita" (código de barras). Não remover. -->
 <textarea id="leitura" class="captura" rows="1" inputmode="none" autocomplete="off" autocapitalize="characters"
           spellcheck="false" tabindex="-1" aria-hidden="true"></textarea>
 <main id="tela"></main>
 <div id="msg" role="status"></div>
+<div id="tecladoTela" hidden></div>
 
 <!-- ⌨ numa tela sem campo de digitação: digitar um código ou EPC à mão -->
 <dialog id="dlgDigitar"><form method="dialog" id="formDigitar">
@@ -210,9 +225,9 @@
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const num = (v) => Number(v ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 3 });
-// "SEM-LOTE" é o lote automático de quem não usa lote: não aparece nas telas
-const loteTxt = (l) => (l && l !== "SEM-LOTE" ? " lote " + esc(l) : "");
-const lotePonto = (l) => (l && l !== "SEM-LOTE" ? " · lote " + esc(l) : "");
+// Lote não aparece nas telas: cada item fica num local (Local-01 é o padrão)
+const loteTxt = () => "";
+const lotePonto = () => "";
 const dataBR = (d) => (d ? d.slice(0, 10).split("-").reverse().join("/") : "-");
 const numero = (texto) => { const v = parseFloat(String(texto).replace(",", ".")); return Number.isFinite(v) ? v : NaN; };
 
@@ -232,8 +247,11 @@ async function api(metodo, url, corpo) {
 
 // ---- retorno para o operador: mensagem, bipe e vibração
 // Configurações do coletor (tela Config), guardadas no próprio aparelho
-const cfg = { volume: 100, potencia: 100 };
+// Potência da antena (%) por tipo de tela: Recebimento (ordem e entrada), Baixa e Localizar
+const cfg = { volume: 100, potRecebimento: 100, potBaixa: 100, potLocalizar: 100, localBaixa: null };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem("coletor.cfg") || "{}")); } catch {}
+const POTENCIA_DA_TELA = { entrada: "potRecebimento", avulsa: "potRecebimento", baixa: "potBaixa", localizar: "potLocalizar" };
+const potenciaDaTela = (nome) => cfg[POTENCIA_DA_TELA[nome]] || 100;   // outras telas (inventário): 100%
 function salvarCfg() { try { localStorage.setItem("coletor.cfg", JSON.stringify(cfg)); } catch {} }
 // No app, o volume é o volume de mídia do próprio coletor; no navegador, o volume do bipe.
 const ganhoBipe = () => (window.ColetorApp?.volume ? 1 : cfg.volume / 100);
@@ -261,7 +279,7 @@ function msg(texto, tipo = "ok", som = true) {
   m.textContent = texto || "";
   if (texto && som) bipe(tipo);
   clearTimeout(timerMsg);
-  if (texto && tipo === "ok") timerMsg = setTimeout(() => (m.className = ""), 6000);
+  if (texto) timerMsg = setTimeout(() => (m.className = ""), 3000);   // toda notificação some em 3 s
 }
 /** Roda uma ação no servidor: trava o botão e mostra o erro com bipe. */
 async function executar(botao, acao) {
@@ -469,22 +487,89 @@ function tecladoManual(ligar) {
   leitura.blur(); leitura.focus();
   if (ligar) teclado?.show(); else teclado?.hide();
 }
-/** ⌨ do cabeçalho: abre o teclado no campo de digitação da tela; sem campo, abre "Digitar código". */
+// Teclado na tela: digita no campo com foco. Numérico nos campos de quantidade.
+const kb = { el: $("tecladoTela"), alvo: null };
+const LINHAS_ALFA = ["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM-."];
+function abrirTecladoTela(alvo) {
+  if (!alvo) return;
+  kb.alvo = alvo;
+  const numerico = ["decimal", "numeric"].includes(alvo.inputMode) || alvo.type === "number";
+  const tecla = (t, classe = "", rotulo = t) => `<button type="button" data-tecla="${t}" class="${classe}">${rotulo}</button>`;
+  kb.el.className = numerico ? "numerico" : "";
+  kb.el.innerHTML = numerico
+    ? ["123", "456", "789"].map((l) => `<div class="linha">${[...l].map((c) => tecla(c)).join("")}</div>`).join("") +
+      `<div class="linha">${tecla(",")}${tecla("0")}${tecla("BS", "esp", "⌫")}</div>
+       <div class="linha">${tecla("FECHAR", "esp", "✕ Fechar")}${tecla("OK", "ok", "OK ↵")}</div>`
+    : LINHAS_ALFA.map((l, i) => `<div class="linha">${[...l].map((c) => tecla(c)).join("")}${i === 2 ? tecla("BS", "esp", "⌫") : ""}</div>`).join("") +
+      `<div class="linha">${tecla("FECHAR", "esp", "✕")}${tecla("ESPACO", "esp", "espaço").replace("<button", '<button style="flex:4"')}${tecla("OK", "ok", "OK ↵").replace("<button", '<button style="flex:2"')}</div>`;
+  const dlg = alvo.closest("dialog");
+  (dlg || document.body).appendChild(kb.el);   // dentro do diálogo aberto (senão fica atrás dele)
+  kb.el.hidden = false;
+  document.body.classList.add("com-teclado");
+  setTimeout(() => alvo.scrollIntoView({ block: "center" }), 50);
+  if (!cfg.teclado) { cfg.teclado = true; salvarCfg(); marcarTecla(); }
+}
+function fecharTecladoTela() {
+  kb.el.hidden = true; kb.alvo = null;
+  document.body.classList.remove("com-teclado");
+  document.body.appendChild(kb.el);
+}
+kb.el.addEventListener("pointerdown", (ev) => ev.preventDefault());   // não tira o foco do campo
+kb.el.addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  const b = ev.target.closest("[data-tecla]");
+  const el = kb.alvo;
+  if (!b || !el) return;
+  const t = b.dataset.tecla;
+  el.focus({ preventScroll: true });
+  if (t === "FECHAR") return fecharTecladoTela();
+  if (t === "OK") {
+    fecharTecladoTela();
+    if (el.dataset.enter) telas[telaAtual][el.dataset.enter]?.();
+    else if (el.form) el.form.requestSubmit();
+    else el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    return;
+  }
+  const ini = el.selectionStart ?? el.value.length, fim = el.selectionEnd ?? el.value.length;
+  if (t === "BS") {
+    if (ini === fim && ini > 0) el.setRangeText("", ini - 1, fim, "end"); else el.setRangeText("", ini, fim, "end");
+  } else {
+    el.setRangeText(t === "ESPACO" ? " " : t, ini, fim, "end");
+  }
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  navigator.vibrate?.(10);
+});
+document.addEventListener("focusin", (ev) => {
+  if (!kb.el.hidden && ehEditavel(ev.target) && ev.target !== kb.alvo) abrirTecladoTela(ev.target);   // trocou de campo
+});
+document.addEventListener("pointerdown", (ev) => {   // teclado ligado (⌨): tocar num campo abre o teclado; tocar fora fecha
+  if (ev.target.closest("#tecladoTela, #teclado")) return;
+  if (cfg.teclado && ehEditavel(ev.target) && ev.target !== leitura) setTimeout(() => abrirTecladoTela(ev.target), 0);
+  else if (!kb.el.hidden) fecharTecladoTela();
+});
+window.addEventListener("hashchange", () => { if (!kb.el.hidden) fecharTecladoTela(); });
+
+/** ⌨ do cabeçalho: liga/desliga o teclado. Ligado: abre no campo da tela (sem campo, "Digitar código")
+ *  e volta a abrir sempre que tocar num campo. Desligado: nenhum teclado aparece. */
+function marcarTecla() { $("teclado").classList.toggle("ligado", !!cfg.teclado); }
 $("teclado").addEventListener("click", (ev) => {
   ev.stopPropagation();
+  cfg.teclado = !cfg.teclado; salvarCfg(); marcarTecla();
+  if (!cfg.teclado) { fecharTecladoTela(); msg("Teclado desligado", "info"); return; }
+  msg("Teclado ligado: toque num campo para digitar", "info");
   const campo = [...tela.querySelectorAll("input, textarea")].find((el) =>
     !["range", "checkbox", "radio", "date", "hidden"].includes(el.type) && el.offsetParent !== null);
   if (campo) {
     campo.focus();
-    campo.scrollIntoView({ block: "center" });
+    abrirTecladoTela(campo);
   } else {
     $("edDigitar").value = "";
     $("dlgDigitar").showModal();
     $("edDigitar").focus();
+    abrirTecladoTela($("edDigitar"));
   }
-  teclado?.show();
-  try { window.ColetorApp?.mostrarTeclado?.(); } catch {}   // app: força o teclado do Android
 });
+marcarTecla();
 $("digCancelar").addEventListener("click", () => $("dlgDigitar").close());
 $("formDigitar").addEventListener("submit", (ev) => {
   ev.preventDefault();
@@ -492,7 +577,7 @@ $("formDigitar").addEventListener("submit", (ev) => {
   $("dlgDigitar").close();
   if (v.trim()) processarLeitura(v);
 });
-$("dlgDigitar").addEventListener("close", () => setTimeout(focarLeitura, 50));
+$("dlgDigitar").addEventListener("close", () => { if (kb.alvo === $("edDigitar")) fecharTecladoTela(); setTimeout(focarLeitura, 50); });
 
 // 5) Tela cheia: esconde a barra de endereços do Chrome. O navegador só deixa entrar
 //    em tela cheia depois de um toque, e o Chrome do Android sai dela sozinho em alguns
@@ -583,10 +668,6 @@ function configurarServidor() {
   $("dlgServidor").showModal();
   $("edServidor").focus();
 }
-$("btConfig").addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  location.hash = "config";
-});
 $("dlgCancelar").addEventListener("click", () => $("dlgServidor").close());
 $("formServidor").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -639,7 +720,7 @@ function abrir(nome) {
   $("voltar").style.display = nome === "menu" ? "none" : "";   // seta depois do logo (o logo não sai do lugar)
   msg("");
   definirGatilho(telas[nome].gatilho || "rfid");
-  definirPotencia(cfg.potencia);   // potência da antena escolhida em Config (padrão 100%)
+  definirPotencia(potenciaDaTela(nome));   // potência escolhida em Config para esta tela (padrão 100%)
   telas[nome].abrir();
   focarLeitura();
 }
@@ -745,7 +826,7 @@ telas.avulsa = {
         origem: "COLETOR", meio: epcs.length ? "RFID" : "BARRAS",
       });
       this.abrir();
-      msg(`OK: entrada de ${num(r.quantidade)} ${r.sku}${r.lote !== "SEM-LOTE" ? "\nLote " + esc(r.lote) + " ·" : "\n"} saldo ${num(r.saldo)}` +
+      msg(`OK: entrada de ${num(r.quantidade)} ${r.sku}\n saldo ${num(r.saldo)}` +
         (r.avisos.length ? "\n⚠ " + r.avisos.join("\n⚠ ") : ""), r.avisos.length ? "alerta" : "ok");
     });
   },
@@ -794,11 +875,11 @@ telas.entrada = {
         ${r.fornecedor ? `<div class="fraco">${esc(r.fornecedor)}</div>` : ""}${barraProgresso(lidas, total)}</div>
       <div class="card"><h2>Itens <span class="dir fraco">toque ou bipe o produto</span></h2><ul class="lista">
         ${d.itens.map((i) => `<li class="clicavel ${i.id === this.itemId ? "escolhido" : ""}" data-acao="escolherItem" data-valor="${i.id}">
-          <div class="info"><b>${esc(i.sku)}</b>${i.lote !== "SEM-LOTE" ? " · lote " + esc(i.lote) : ""} ${seloValidade(i.validade)}
+          <div class="info"><b>${esc(i.sku)}</b> ${seloValidade(i.validade)}
             <div class="fraco">${esc(i.descricao)}${i.validade ? " · val. " + dataBR(i.validade) : ""}</div>${barraProgresso(i.lidas, i.prevista)}</div>
           <span class="qtd">${num(i.lidas)}/${num(i.prevista)}</span></li>`).join("")}</ul></div>
       ${item ? `<div class="card"><h2>Item escolhido</h2>
-          <div class="produto">${esc(item.sku)}${item.lote !== "SEM-LOTE" ? " · lote " + esc(item.lote) : ""}</div>
+          <div class="produto">${esc(item.sku)}</div>
           <p class="fraco" style="margin:4px 0 8px">Aperte o gatilho perto das etiquetas: cada uma já vai para o servidor.</p>
           <label class="campo"><span>Sem etiqueta RFID? Quantidade</span><input id="rcQtd" inputmode="decimal" enterkeyhint="done" data-enter="adicionarQtd"></label>
           <div class="botoes"><button class="b" data-acao="adicionarQtd" id="rcQtdBotao">Adicionar quantidade</button></div></div>`
@@ -877,12 +958,16 @@ telas.baixa = {
     this.baixadas = []; this.buffer = []; this.vistas = new Set();
     tela.innerHTML = `<div class="card">
         <label class="campo"><span>Motivo</span><select id="bxMotivo">${motivos.map((m) => `<option>${m}</option>`).join("")}</select></label>
+        <label class="campo"><span>Local de onde sai</span><select id="bxLocal">${enderecos.map((e) =>
+          `<option value="${e.id}" ${e.id === cfg.localBaixa ? "selected" : ""}>${esc(e.codigo)}</option>`).join("")}</select></label>
         <p class="fraco" style="margin:0">Aperte o gatilho perto das etiquetas: cada uma lida é <b>baixada na hora</b>.
           Leu por engano? Toque em <b>desfazer</b>. Produto sem etiqueta: bipe o código de barras.</p></div>
       <div class="card"><h2>Baixadas agora <span class="dir"><span class="contador" id="bxCont">0</span></span></h2>
         <ul class="lista" id="bxLista"></ul></div>`;
+    $("bxLocal").addEventListener("change", () => { cfg.localBaixa = Number($("bxLocal").value); salvarCfg(); });
     this.desenhar();
   },
+  local() { return Number($("bxLocal")?.value) || null; },
   desenhar() {
     if (!$("bxLista")) return;
     $("bxCont").textContent = this.baixadas.filter((b) => (b.ok && !b.desfeita) || b.qtd).length;
@@ -899,7 +984,7 @@ telas.baixa = {
       this.produto = p;
       $("bxQtdCard")?.remove();
       $("bxLista").closest(".card").insertAdjacentHTML("beforebegin", `<div class="card" id="bxQtdCard"><h2>Baixa por quantidade</h2>
-        <div class="produto">${esc(p.sku)}</div><div class="fraco">${esc(p.descricao)} · sai do lote que vence primeiro</div>
+        <div class="produto">${esc(p.sku)}</div><div class="fraco">${esc(p.descricao)} · sai de ${esc($("bxLocal")?.selectedOptions[0]?.text || "")}</div>
         <label class="campo" style="margin-top:6px"><span>Quantidade</span><input id="bxQtd" inputmode="decimal" enterkeyhint="done" data-enter="baixarQtd"></label>
         <div class="botoes"><button class="b" data-acao="fecharQtd">Cancelar</button><button class="b perigo" data-acao="baixarQtd" id="bxQtdBotao">Baixar</button></div></div>`);
       digitar($("bxQtd"));
@@ -910,10 +995,10 @@ telas.baixa = {
     const q = numero($("bxQtd")?.value);
     if (!(q > 0)) return msg("Informe a quantidade", "alerta");
     await executar($("bxQtdBotao"), async () => {
-      const r = await api("POST", "/api/baixas", { produto_id: this.produto.id, quantidade: q, motivo: $("bxMotivo").value, origem: "COLETOR", meio: "BARRAS" });
+      const r = await api("POST", "/api/baixas", { produto_id: this.produto.id, quantidade: q, motivo: $("bxMotivo").value, endereco_id: this.local(), origem: "COLETOR", meio: "BARRAS" });
       for (const l of r.lotes) this.baixadas.unshift({ epc: `${num(l.quantidade)} un. por código de barras`, ok: false, qtd: true, info: `${this.produto.sku}${lotePonto(l.lote)}` });
+      msg(`✓ Baixa de ${num(q)} ${this.produto.sku}`);
       this.fecharQtd(); this.desenhar();
-      msg("✓ Baixa por FEFO: " + r.lotes.map((l) => `${num(l.quantidade)}${l.lote !== "SEM-LOTE" ? " do" + loteTxt(l.lote) : ""}`).join(", "));
     });
   },
   rfid(epc) {
@@ -927,7 +1012,7 @@ telas.baixa = {
     const epcs = this.buffer; this.buffer = [];
     if (!epcs.length) return;
     try {
-      const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo")?.value || "CONSUMO", origem: "COLETOR", meio: "RFID" });
+      const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo")?.value || "CONSUMO", endereco_id: this.local(), origem: "COLETOR", meio: "RFID" });
       for (const t of r.tags.filter((x) => x.ok)) this.baixadas.unshift({ epc: t.epc, ok: true, info: `${t.sku}${lotePonto(t.lote)}` });
       const ok = r.tags.filter((t) => t.ok).length, ignoradas = r.tags.length - ok;
       if (ok) msg(`✓ ${ok} baixada(s)` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
@@ -991,7 +1076,7 @@ telas.inventario = {
           <div><div class="contador" style="color:var(--alerta)">${num(faltando)}</div><div class="fraco">faltando</div></div>
           <div><div class="contador" style="color:var(--primaria)">${num(sobras)}</div><div class="fraco">sobrando</div></div>
         </div></div>
-      <div class="card"><h2>Por produto e lote</h2><ul class="lista">
+      <div class="card"><h2>Por produto</h2><ul class="lista">
         ${c.map((x) => `<li><div class="info"><b>${esc(x.sku)}</b>${lotePonto(x.lote)}<div class="fraco">${esc(x.descricao)}</div>
             ${barraProgresso(Math.min(x.contado, x.sistema), x.sistema)}</div>
           <span class="qtd" style="color:${x.contado < x.sistema ? "var(--alerta)" : x.contado > x.sistema ? "var(--primaria)" : "var(--sucesso)"}">${num(x.contado)}/${num(x.sistema)}</span></li>`).join("")
@@ -1072,7 +1157,7 @@ telas.localizar = {
       const tags = await api("GET", "/api/tags?status=ATIVA&limite=500");
       if (telaAtual !== "localizar" || this.alvo || !$("lcCorpo")) return;
       $("lcCorpo").innerHTML = `<div class="card"><h2>Etiquetas em estoque</h2>
-        <input id="lcBusca" placeholder="Filtrar por produto, lote ou final do EPC" style="margin-bottom:6px">
+        <input id="lcBusca" placeholder="Filtrar por produto ou final do EPC" style="margin-bottom:6px">
         <ul class="lista" id="lcLista"></ul></div>`;
       const desenhar = () => {
         const f = $("lcBusca").value.trim().toUpperCase();
@@ -1154,8 +1239,10 @@ telas.config = {
         <input type="range" id="cfVolume" min="0" max="100" step="10" value="${volume}" style="padding:0">
         <div class="botoes" style="margin-top:8px"><button class="b" data-acao="testar">🔊 Testar bipe</button></div>
         ${app ? '<p class="fraco" style="margin:6px 0 0">Muda o volume de mídia do coletor.</p>' : ""}</div>
-      <div class="card"><h2>Potência da antena RFID <span class="dir"><b id="cfPotTxt">${cfg.potencia}%</b></span></h2>
-        <input type="range" id="cfPotencia" min="10" max="100" step="10" value="${cfg.potencia}" style="padding:0">
+      <div class="card"><h2>Potência da antena RFID</h2>
+        ${[["potRecebimento", "Recebimento e entrada"], ["potBaixa", "Baixa"], ["potLocalizar", "Localizar etiqueta"]].map(([k, nome]) => `
+          <div class="potencia"><div>${nome} <span class="dir"><b id="${k}Txt">${cfg[k]}%</b></span></div>
+            <input type="range" data-pot="${k}" min="10" max="100" step="10" value="${cfg[k]}" style="padding:0"></div>`).join("")}
         <p class="fraco" style="margin:6px 0 0">100% lê mais longe. Menos potência lê só o que está perto (evita pegar mercadoria vizinha).</p></div>
       <div class="card"><h2>Servidor</h2>
         <div>Conectado a <b class="mono">${esc(location.origin)}</b></div>
@@ -1167,11 +1254,10 @@ telas.config = {
       try { window.ColetorApp?.volume?.(cfg.volume); } catch {}
     });
     $("cfVolume").addEventListener("change", () => bipe("ok"));
-    $("cfPotencia").addEventListener("input", () => {
-      cfg.potencia = Number($("cfPotencia").value); salvarCfg();
-      $("cfPotTxt").textContent = cfg.potencia + "%";
-      definirPotencia(cfg.potencia);
-    });
+    tela.querySelectorAll("[data-pot]").forEach((r) => r.addEventListener("input", () => {
+      cfg[r.dataset.pot] = Number(r.value); salvarCfg();
+      $(r.dataset.pot + "Txt").textContent = r.value + "%";
+    }));
   },
   testar() { bipe("ok"); },
   procurar() {
