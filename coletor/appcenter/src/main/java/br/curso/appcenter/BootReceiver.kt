@@ -5,8 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 
-/** Ao ligar o coletor (ou atualizar o AppCenter): volta para o AppCenter em modo quiosque,
- *  mesmo que o administrador tenha fechado o AppCenter antes de desligar. */
+/** Reforço ao ligar o coletor (ou atualizar o AppCenter). O principal é o AppCenter ser a tela
+ *  inicial: ele já sobe no boot; este aviso do Android chega bem depois (uns 40 s no MC3300). */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         Log.i(Quiosque.TAG, "boot: ${intent.action}")

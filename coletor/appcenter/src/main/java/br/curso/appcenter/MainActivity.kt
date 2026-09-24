@@ -55,9 +55,22 @@ class MainActivity : Activity() {
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
-        quiosque.ativar(this)   // também religa se o admin tinha fechado e abriu o AppCenter de novo
+        if (quiosque.liberado) {
+            // Admin saiu do quiosque neste boot: a tecla Home leva ao Android completo.
+            // Pelo ícone do AppCenter (não pela Home), o quiosque volta.
+            if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
+                quiosque.launcherPadrao()?.let { startActivity(it); return }
+            }
+            quiosque.travarDeNovo()
+        }
+        quiosque.ativar(this)
         desenhar()
         esconderVoltar()
     }

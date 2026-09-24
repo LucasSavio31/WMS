@@ -12,8 +12,8 @@ android {
         applicationId = "br.curso.appcenter"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
     // Mesma chave fixa do app do coletor (atualiza por cima sem desinstalar)
