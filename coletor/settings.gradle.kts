@@ -6,3 +6,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "ColetorWMS"
 include(":app")
+include(":appcenter")

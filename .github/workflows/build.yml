@@ -1,6 +1,7 @@
 # Gera os programas prontos e publica na página "Releases" do repositório:
 #   - WMS-Servidor.exe  (Windows, não precisa instalar Python)
 #   - ColetorWMS.apk    (Zebra MC3390R / MC3330R)
+#   - AppCenter.apk     (tela inicial em modo quiosque para o coletor)
 name: Build
 
 on:
@@ -55,10 +56,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
           cp app/build/outputs/apk/debug/app-debug.apk ColetorWMS.apk
+          cp appcenter/build/outputs/apk/debug/appcenter-debug.apk AppCenter.apk
       - uses: actions/upload-artifact@v4
         with:
           name: ColetorWMS
           path: coletor/ColetorWMS.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AppCenter
+          path: coletor/AppCenter.apk
 
   publicar:
     needs: [servidor-windows, coletor-android]
@@ -75,6 +81,8 @@ jobs:
           body: |
             **WMS-Servidor.exe**: baixe no PC (Windows) e dê dois cliques. O navegador abre em http://localhost:8000.
             **ColetorWMS.apk**: instale no coletor Zebra MC3390R / MC3330R e informe o endereço que aparece na janela do servidor.
+            **AppCenter.apk**: tela inicial em modo quiosque (só os apps liberados; admin com 5 toques + PIN). Veja o README.
           files: |
             WMS-Servidor.exe
             ColetorWMS.apk
+            AppCenter.apk
