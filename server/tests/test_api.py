@@ -411,3 +411,14 @@ def test_relatorios_pdf(api):
     for url in ("/api/relatorios/estoque.pdf", "/api/relatorios/movimentos.pdf?tipo=ENTRADA"):
         r = api.get(url)
         assert r.status_code == 200 and r.content.startswith(b"%PDF")
+
+
+def test_renomear_local_atualiza_historico(api):
+    pid = produto(api)
+    b = api.post("/api/enderecos", json={"codigo": "Local-02"}).json()["id"]
+    api.post("/api/entradas", json={"produto_id": pid, "quantidade": 2})
+    api.post("/api/mover", json={"itens": [{"produto_id": pid, "local_id": 1}], "destino_id": b})
+    assert api.put(f"/api/enderecos/{b}", json={"codigo": "Galpão"}).status_code == 200
+    locais = {m["endereco"] for m in api.get("/api/movimentos").json()}
+    assert locais == {"Local-01", "Galpão"}
+    assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 2, "endereco_id": b}).status_code == 200

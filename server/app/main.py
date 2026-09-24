@@ -234,6 +234,14 @@ def listar_enderecos(con: Con = Depends(conexao)):
            GROUP BY e.id ORDER BY e.id"""))
 
 
+def renomear_local(con, endereco_id, antigo, novo):
+    """Local renomeado: o histórico e o "lote" com o nome do local passam a usar o nome novo."""
+    con.execute("UPDATE movimentos SET endereco=? WHERE endereco=?", (novo, antigo))
+    con.execute("""UPDATE lotes SET lote=? WHERE endereco_id=? AND lote=?
+                   AND NOT EXISTS (SELECT 1 FROM lotes l2 WHERE l2.produto_id=lotes.produto_id AND l2.lote=?)""",
+                (novo, endereco_id, antigo, novo))
+
+
 def salvar_endereco(con, e: Endereco, endereco_id=None):
     codigo = e.codigo.strip()
     if con.execute("SELECT 1 FROM enderecos WHERE UPPER(codigo)=UPPER(?) AND id<>?", (codigo, endereco_id or 0)).fetchone():
@@ -244,7 +252,10 @@ def salvar_endereco(con, e: Endereco, endereco_id=None):
     dados = (codigo, (e.descricao or "").strip() or None, e.tipo, int(e.ativo))
     try:
         if endereco_id:
+            antigo = con.execute("SELECT codigo FROM enderecos WHERE id=?", (endereco_id,)).fetchone()
             con.execute("UPDATE enderecos SET codigo=?, descricao=?, tipo=?, ativo=? WHERE id=?", (*dados, endereco_id))
+            if antigo and antigo[0] != codigo:
+                renomear_local(con, endereco_id, antigo[0], codigo)
             return endereco_id
         return con.execute("INSERT INTO enderecos (codigo, descricao, tipo, ativo) VALUES (?,?,?,?)", dados).lastrowid
     except sqlite3.IntegrityError:

@@ -40,7 +40,7 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 
 | Onde | O quê |
 |---|---|
-| PC | **Dash** (primeira tela): um card por local de estoque com a quantidade; clicar no card mostra os itens e quantidades. Botão **Relatório PDF** |
+| PC | **Dashboard** (primeira tela): um card por local de estoque com a quantidade; clicar no card mostra os itens e quantidades. Botão **Relatório PDF** |
 | PC | **Estoque**: cada item em cada local. Marque os itens, clique em **Mover** e escolha o local de destino (sempre pede confirmação). **Relatório PDF** com os itens de cada local |
 | PC | **Locais**: cadastro dos locais de estoque (armazéns), com nome e descrição. O **Local-01** vem pronto e é o padrão |
 | PC | **Produtos**: cadastro (SKU, descrição, EAN, unidade, mínimo) |

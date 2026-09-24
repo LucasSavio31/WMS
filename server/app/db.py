@@ -288,6 +288,7 @@ def migrar(con) -> None:
         else:
             con.execute("INSERT INTO enderecos (codigo, descricao, tipo) VALUES (?, 'Local padrão', 'ARMAZENAGEM')", (LOCAL_PADRAO,))
     padrao = con.execute("SELECT id FROM enderecos WHERE UPPER(codigo)=UPPER(?)", (LOCAL_PADRAO,)).fetchone()[0]
+    con.execute("UPDATE movimentos SET endereco=? WHERE endereco='DOCA-REC'", (LOCAL_PADRAO,))   # histórico antigo
     con.execute("UPDATE lotes SET endereco_id=? WHERE endereco_id IS NULL", (padrao,))
     # Sem lote: cada item tem um "lote" por local, com o nome do local (SEM-LOTE antigo vira o nome do local)
     con.execute("""UPDATE lotes SET lote = (SELECT e.codigo FROM enderecos e WHERE e.id = lotes.endereco_id)

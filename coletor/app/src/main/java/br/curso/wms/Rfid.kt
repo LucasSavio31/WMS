@@ -296,6 +296,21 @@ object Rfid : RfidEventsListener {
         if (alvo == null) naFila("não parou a localização") { leitor?.let { pararLocalizar(it) } }
     }
 
+    // LED verde piscando (estrobo) no modo localizar: o leitor pisca o LED a cada leitura da
+    // etiqueta procurada (quanto mais perto, mais leituras, mais rápido pisca).
+    @Volatile private var ledSemSuporte = false
+
+    private fun piscarLed(r: RFIDReader, ligar: Boolean) {
+        if (ledSemSuporte) return
+        try {
+            r.Config.setLedBlinkEnable(ligar)
+            log("LED piscando: $ligar")
+        } catch (e: Throwable) {
+            ledSemSuporte = true   // este leitor não aceita: segue sem piscar, sem erro na tela
+            Log.w(TAG, "LED: sem suporte (${e.message})")
+        }
+    }
+
     /** Liga/desliga a procura sem usar o gatilho (botão da tela). */
     fun procurar(ligar: Boolean) {
         naFila(if (ligar) "não começou a localização" else "não parou a localização") {
@@ -309,6 +324,7 @@ object Rfid : RfidEventsListener {
         if (localizando) return
         if (lendo) parar(r)
         log("localizar: procurando $epc")
+        piscarLed(r, true)
         r.Actions.TagLocationing.Perform(epc, null, null)
         localizando = true
     }
@@ -321,6 +337,7 @@ object Rfid : RfidEventsListener {
         } catch (e: Throwable) {
             r.Actions.Inventory.stop()
         }
+        piscarLed(r, false)
         log("localizar: parou")
         aoLocalizar?.invoke(-1)   // -1 = procura parada
     }

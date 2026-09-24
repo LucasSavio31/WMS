@@ -119,6 +119,11 @@
   .barra input[type=search] { max-width: 280px; }
   .barra select { width: auto; }
   .barra .direita { margin-left: auto; display: flex; gap: 8px; }
+  /* Filtros do histórico: tudo numa linha */
+  .barra.compacta { gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding: 10px 12px; }
+  .barra.compacta input, .barra.compacta select, .barra.compacta button, .barra.compacta .botao { padding: 5px 8px; font-size: 13px; }
+  .barra.compacta .check { gap: 4px; font-size: 13px; white-space: nowrap; }
+  .barra.compacta input[type=date] { width: 128px; }
 
   .tabela { overflow-x: auto; border: 1px solid var(--borda); border-radius: var(--raio); background: var(--painel); }
   table { width: 100%; border-collapse: collapse; }
@@ -203,7 +208,7 @@
       <div>Mini WMS</div>
     </div>
     <nav id="menu">
-      <a href="#dash" data-pagina="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h7v7H4z M13 4h7v4h-7z M13 10h7v10h-7z M4 13h7v7H4z"/></svg>Dash</a>
+      <a href="#dash" data-pagina="dash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h7v7H4z M13 4h7v4h-7z M13 10h7v10h-7z M4 13h7v7H4z"/></svg>Dashboard</a>
       <a href="#estoque" data-pagina="estoque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7l9-4 9 4v10l-9 4-9-4z M3 7l9 4 9-4 M12 11v10"/></svg>Estoque</a>
       <a href="#produtos" data-pagina="produtos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5v14 M7 5v14 M11 5v14 M14 5v14 M18 5v14 M20 5v14"/></svg>Produtos</a>
       <a href="#enderecos" data-pagina="enderecos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V9l9-6 9 6v12 M7 21v-8h10v8 M7 17h10"/></svg>Locais</a>
@@ -250,8 +255,8 @@
         </div>
       </section>
 
-      <!-- =================================================== DASH -->
-      <section class="pagina" id="dash" data-titulo="Dash" data-sub="Quantidade em cada local de estoque. Clique num local para ver os itens">
+      <!-- =================================================== DASHBOARD -->
+      <section class="pagina" id="dash" data-titulo="Dashboard" data-sub="Quantidade em cada local de estoque. Clique num local para ver os itens">
         <div class="barra"><span class="fraco" id="dashTotal"></span>
           <div class="direita"><a class="botao" href="/api/relatorios/estoque.pdf" target="_blank">📄 Relatório PDF</a></div></div>
         <div class="locais" id="dashLocais"></div>
@@ -489,19 +494,19 @@
       </section>
 
       <!-- =================================================== MOVIMENTOS -->
-      <section class="pagina" id="movimentos" data-titulo="Histórico" data-sub="Tudo que aconteceu com cada lote, com o saldo depois de cada movimento">
-        <form id="formFiltroMov" class="card barra" autocomplete="off">
-          <input type="search" id="mBusca" placeholder="SKU, produto, lote, documento ou EPC" style="max-width:260px">
-          <select id="mProduto" data-produtos="todos" data-vazio="Todos os produtos" style="max-width:240px"></select>
-          <select id="mTipo"><option value="">Todos os tipos</option><option>ENTRADA</option><option>BAIXA</option><option>AJUSTE</option><option>ESTORNO</option></select>
+      <section class="pagina" id="movimentos" data-titulo="Histórico" data-sub="Tudo que aconteceu com cada item, com o saldo no local depois de cada movimento">
+        <form id="formFiltroMov" class="card barra compacta" autocomplete="off">
+          <input type="search" id="mBusca" placeholder="Item, documento ou EPC" style="max-width:190px">
+          <select id="mProduto" data-produtos="todos" data-vazio="Todos os produtos" style="max-width:170px"></select>
+          <select id="mTipo"><option value="">Todos os tipos</option><option>ENTRADA</option><option>BAIXA</option><option>TRANSFERENCIA</option><option>AJUSTE</option><option>ESTORNO</option></select>
           <label class="check">De <input type="date" id="mDe"></label>
           <label class="check">Até <input type="date" id="mAte"></label>
           <button class="primario" type="submit">Filtrar</button>
           <button type="reset">Limpar</button>
-          <span class="direita"><a class="botao" id="mCsv" href="/api/relatorios/movimentos.pdf" target="_blank">📄 Relatório PDF</a></span>
+          <a class="botao" id="mCsv" href="/api/relatorios/movimentos.pdf" target="_blank" title="Relatório PDF com os filtros escolhidos">📄 PDF</a>
         </form>
         <div class="tabela"><table>
-          <thead><tr><th>Data/hora</th><th>Tipo</th><th>Produto</th><th>Lote</th><th>Endereço</th><th class="num">Qtd</th><th class="num">Saldo lote</th><th>Documento</th><th>Motivo</th><th>EPC</th><th>Origem</th></tr></thead>
+          <thead><tr><th>Data/hora</th><th>Tipo</th><th>Item</th><th>Local</th><th class="num">Qtd</th><th class="num">Saldo no local</th><th>Documento</th><th>Motivo</th><th>EPC</th><th>Origem</th></tr></thead>
           <tbody id="tabMovimentos"></tbody></table></div>
         <p class="fraco" id="mRodape"></p>
       </section>
@@ -1459,12 +1464,12 @@ async function carregarMovimentos() {
   const lista = await api("GET", "/api/movimentos?" + q);
   $("tabMovimentos").innerHTML = lista.map((m) => `<tr>
     <td class="fraco" style="white-space:nowrap">${dataHoraBR(m.data_hora)}</td><td>${seloTipo(m.tipo)}</td>
-    <td>${esc(m.sku)} <span class="fraco">${esc(m.descricao)}</span></td><td>${esc(m.lote)}</td><td><span class="cod">${esc(m.endereco)}</span></td>
+    <td>${esc(m.sku)} <span class="fraco">${esc(m.descricao)}</span></td><td><span class="cod">${esc(m.endereco)}</span></td>
     <td class="num ${qtdClasse(m.quantidade)}">${m.quantidade ? sinal(m.quantidade) : ""}</td>
     <td class="num">${m.saldo_apos === null ? "" : num(m.saldo_apos)}</td>
     <td>${esc(m.documento)}</td><td>${esc(m.motivo)}</td><td class="mono">${esc(m.epc)}</td>
-    <td class="fraco">${esc(m.origem)} · ${esc(m.meio)}</td></tr>`).join("") || vazio(11, "Nenhum movimento encontrado");
-  $("mRodape").textContent = lista.length >= 500 ? "Mostrando os 500 mais recentes. Use os filtros ou exporte o CSV para ver tudo." : `${lista.length} movimento(s)`;
+    <td class="fraco">${esc(m.origem)} · ${esc(m.meio)}</td></tr>`).join("") || vazio(10, "Nenhum movimento encontrado");
+  $("mRodape").textContent = lista.length >= 500 ? "Mostrando os 500 mais recentes. Use os filtros ou o PDF para ver tudo." : `${lista.length} movimento(s)`;
 }
 $("formFiltroMov").addEventListener("submit", (ev) => { ev.preventDefault(); executar(ev.submitter, carregarMovimentos); });
 $("formFiltroMov").addEventListener("reset", () => setTimeout(carregarMovimentos));
