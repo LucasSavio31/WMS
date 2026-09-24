@@ -332,7 +332,7 @@ class MainActivity : Activity() {
             quiosque.fechar(this)
         })
         raiz.addView(TextView(this).apply {
-            text = "Libera o Android completo. Ao reiniciar o coletor, o AppCenter volta sozinho em modo quiosque."
+            text = "Libera o Android completo. O quiosque volta ao reiniciar o coletor ou ao tocar no ícone AppCenter."
             setTextColor(cinza)
             textSize = 13f
             setPadding(0, dp(4), 0, dp(20))

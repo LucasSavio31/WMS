@@ -33,6 +33,20 @@
             android:clearTaskOnLaunch="true"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
 
+        <!-- Ícone "AppCenter" no launcher do Android: volta ao quiosque depois que o admin saiu -->
+        <activity
+            android:name=".AbrirAppCenter"
+            android:exported="true"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Tela inicial (HOME) do aparelho. O admin desliga este atalho ao "Fechar AppCenter". -->
         <activity-alias
             android:name=".Home"

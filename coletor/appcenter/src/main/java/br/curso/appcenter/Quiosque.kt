@@ -71,6 +71,9 @@ class Quiosque(private val ctx: Context) {
         ?.let { Intent(Intent.ACTION_MAIN).setClassName(it.activityInfo.packageName, it.activityInfo.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
 
+    /** Volta ao modo quiosque (ícone AppCenter no launcher do Android). */
+    fun travarDeNovo() = prefs.edit().remove("liberadoNoBoot").commit()
+
     fun emQuiosque(): Boolean =
         ctx.getSystemService(ActivityManager::class.java).lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
 
