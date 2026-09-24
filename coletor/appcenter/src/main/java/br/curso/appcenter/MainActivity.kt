@@ -278,7 +278,7 @@ class MainActivity : Activity() {
             setPadding(0, dp(4), 0, dp(12))
         })
 
-        raiz.addView(botao("← Sair do admin (voltar ao AppCenter)", azul, Color.WHITE) {
+        raiz.addView(botao("← Sair do admin", azul, Color.WHITE) {
             Estado.admin = false
             desenhar()
         })
@@ -316,27 +316,34 @@ class MainActivity : Activity() {
         }
 
         raiz.addView(TextView(this).apply {
-            text = "ANDROID"
+            text = "MODO QUIOSQUE"
             textSize = 13f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(cinza)
             setPadding(0, dp(20), 0, dp(4))
         })
-        raiz.addView(botao("Fechar AppCenter (Android completo)", Color.parseColor("#EEF1F5"), texto) {
+        raiz.addView(botao("Sair do modo quiosque", Color.parseColor("#EEF1F5"), texto) {
             Estado.admin = false
             quiosque.fechar(this)
         })
         raiz.addView(TextView(this).apply {
-            text = "O AppCenter volta sozinho ao ligar o coletor ou ao abrir o ícone AppCenter."
+            text = "Libera o Android completo. Ao reiniciar o coletor, o AppCenter volta sozinho em modo quiosque."
             setTextColor(cinza)
             textSize = 13f
             setPadding(0, dp(4), 0, dp(20))
         })
-        raiz.addView(botao("Remover modo quiosque", Color.WHITE, Color.parseColor("#C62828")) {
+        raiz.addView(TextView(this).apply {
+            text = "DESINSTALAR"
+            textSize = 13f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(cinza)
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        raiz.addView(botao("Remover AppCenter do aparelho", Color.WHITE, Color.parseColor("#C62828")) {
             AlertDialog.Builder(this)
-                .setTitle("Remover modo quiosque")
-                .setMessage("O AppCenter deixa de ser o administrador do aparelho e o Android fica livre, " +
-                    "inclusive depois de reiniciar. Para voltar, é preciso ativar de novo pelo ADB (veja o README).")
+                .setTitle("Remover AppCenter do aparelho")
+                .setMessage("O AppCenter deixa de controlar o aparelho: NÃO volta mais ao reiniciar e pode ser " +
+                    "desinstalado. Para ativar de novo é preciso o ADB (veja o README).")
                 .setNegativeButton("Voltar", null)
                 .setPositiveButton("Remover") { _, _ ->
                     Estado.admin = false
@@ -359,7 +366,11 @@ class MainActivity : Activity() {
         background = fundo(fundoCor).apply {
             if (fundoCor == Color.WHITE) setStroke(dp(1), textoCor)
         }
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply {
+        // Altura acompanha o texto (texto longo quebra em duas linhas sem cortar)
+        minHeight = dp(52)
+        minimumHeight = dp(52)
+        setPadding(dp(12), dp(10), dp(12), dp(10))
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(8)
         }
         setOnClickListener { acao() }
