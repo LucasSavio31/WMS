@@ -967,19 +967,60 @@ telas.entrada = {
 telas.baixa = {
   titulo: "Baixa",
   abrir() {
-    this.baixadas = []; this.buffer = []; this.vistas = new Set();
+    this.baixadas = []; this.buffer = []; this.vistas = new Set(); this.pendentes = new Map();
     tela.innerHTML = `<div class="card">
         <label class="campo"><span>Motivo</span><select id="bxMotivo">${motivos.map((m) => `<option>${m}</option>`).join("")}</select></label>
         <label class="campo"><span>Local de onde sai</span><select id="bxLocal">${enderecos.map((e) =>
           `<option value="${e.id}" ${e.id === cfg.localBaixa ? "selected" : ""}>${esc(e.codigo)}</option>`).join("")}</select></label>
-        <p class="fraco" style="margin:0">Aperte o gatilho perto das etiquetas: cada uma lida é <b>baixada na hora</b>.
-          Leu por engano? Toque em <b>desfazer</b>. Produto sem etiqueta: bipe o código de barras.</p></div>
+        <p class="fraco" style="margin:0">Aperte o gatilho perto das etiquetas: elas entram em <b>Para baixar</b>.
+          Confira e toque em <b>Confirmar baixa</b>. Produto sem etiqueta: bipe o código de barras.</p></div>
+      <div class="card"><h2>Para baixar <span class="dir"><span class="contador" id="bxPendCont">0</span></span></h2>
+        <ul class="lista" id="bxPend"></ul>
+        <div class="botoes" style="margin-top:8px"><button class="b" data-acao="limparPendentes">Limpar</button>
+          <button class="b perigo" data-acao="confirmar" id="bxConfirmar" disabled>Confirmar baixa</button></div></div>
       <div class="card"><h2>Baixadas agora <span class="dir"><span class="contador" id="bxCont">0</span></span></h2>
         <ul class="lista" id="bxLista"></ul></div>`;
-    $("bxLocal").addEventListener("change", () => { cfg.localBaixa = Number($("bxLocal").value); salvarCfg(); });
+    $("bxLocal").addEventListener("change", () => {
+      cfg.localBaixa = Number($("bxLocal").value); salvarCfg();
+      // trocou o local: sai da lista o que é de outro local
+      for (const [epc, t] of this.pendentes) if (t.endereco_id !== this.local()) { this.pendentes.delete(epc); this.vistas.delete(epc); }
+      this.desenharPendentes();
+    });
+    this.desenharPendentes();
     this.desenhar();
   },
   local() { return Number($("bxLocal")?.value) || null; },
+  desenharPendentes() {
+    if (!$("bxPend")) return;
+    const n = this.pendentes.size;
+    $("bxPendCont").textContent = n;
+    $("bxConfirmar").disabled = !n;
+    $("bxConfirmar").textContent = n ? `Confirmar baixa (${n})` : "Confirmar baixa";
+    $("bxPend").innerHTML = [...this.pendentes.values()].reverse().map((t) => `<li>
+        <div class="info"><b>${esc(t.sku)}</b> <span class="fraco">${esc(t.descricao || "")}</span>
+          <div class="mono fraco">${esc(t.epc)}</div></div>
+        <button class="link" data-acao="tirar" data-valor="${esc(t.epc)}">tirar</button></li>`).join("")
+      || `<li class="vazio">Nenhuma etiqueta lida</li>`;
+  },
+  tirar(_b, epc) { this.pendentes.delete(epc); this.vistas.delete(epc); this.desenharPendentes(); },
+  limparPendentes() {
+    for (const epc of this.pendentes.keys()) this.vistas.delete(epc);
+    this.pendentes.clear(); this.desenharPendentes();
+  },
+  /** Só aqui a baixa é feita no sistema. */
+  async confirmar(b) {
+    const epcs = [...this.pendentes.keys()];
+    if (!epcs.length) return;
+    await executar(b, async () => {
+      const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo")?.value || "CONSUMO", endereco_id: this.local(), origem: "COLETOR", meio: "RFID" });
+      const ok = r.tags.filter((t) => t.ok);
+      for (const t of ok) this.baixadas.unshift({ epc: t.epc, ok: true, info: `${t.sku}${lotePonto(t.lote)}` });
+      for (const t of r.tags) this.pendentes.delete(t.epc);   // a que falhou (já baixada em outro lugar) sai da lista
+      const ignoradas = r.tags.length - ok.length;
+      msg(`✓ ${ok.length} baixada(s)` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
+      this.desenharPendentes(); this.desenhar();
+    });
+  },
   desenhar() {
     if (!$("bxLista")) return;
     $("bxCont").textContent = this.baixadas.filter((b) => (b.ok && !b.desfeita) || b.qtd).length;
@@ -1018,21 +1059,23 @@ telas.baixa = {
     this.vistas.add(epc);
     this.buffer.push(epc);
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.enviar(), 250);
+    this.timer = setTimeout(() => this.conferir(), 250);
   },
-  async enviar() {
+  /** Etiquetas lidas: confere no servidor (sem baixar) e põe em "Para baixar" as que estão
+   *  em estoque no local escolhido. As outras são ignoradas em silêncio. */
+  async conferir() {
     const epcs = this.buffer; this.buffer = [];
     if (!epcs.length) return;
-    try {
-      const r = await api("POST", "/api/baixas", { epcs, motivo: $("bxMotivo")?.value || "CONSUMO", endereco_id: this.local(), origem: "COLETOR", meio: "RFID" });
-      for (const t of r.tags.filter((x) => x.ok)) this.baixadas.unshift({ epc: t.epc, ok: true, info: `${t.sku}${lotePonto(t.lote)}` });
-      const ok = r.tags.filter((t) => t.ok).length, ignoradas = r.tags.length - ok;
-      if (ok) msg(`✓ ${ok} baixada(s)` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
-      if (telaAtual === "baixa") this.desenhar();
-    } catch (e) {
-      epcs.forEach((x) => this.vistas.delete(x));   // falhou a rede: pode ler de novo
-      msg(e.message, "erro");
-    }
+    const local = this.local();
+    await Promise.all(epcs.map(async (epc) => {
+      try {
+        const t = await api("GET", "/api/tags/" + encodeURIComponent(epc));
+        if (t.status === "ATIVA" && (!local || t.endereco_id === local)) this.pendentes.set(t.epc, t);
+      } catch (e) {
+        if (/conex|Wi-Fi/i.test(e.message)) { this.vistas.delete(epc); msg(e.message, "erro"); }   // sem rede: pode ler de novo
+      }
+    }));
+    if (telaAtual === "baixa") this.desenharPendentes();
   },
   async desfazer(b, epc) {
     await executar(b, async () => {

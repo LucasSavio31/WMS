@@ -16,6 +16,21 @@ Controle de estoque simples com **leitor Zebra MC3390R / MC3330R** (Android, RFI
 O coletor **não tem regra nem banco de dados**: ele só envia o que leu. Quem decide o lote (FEFO),
 confere o saldo e grava a data/hora é o servidor. Por isso o relógio do coletor não precisa estar certo.
 
+## Componentes e tecnologias
+
+O projeto tem quatro partes. As duas primeiras rodam no PC (no mesmo programa); as outras duas são apps
+separados no coletor.
+
+| Parte | O que é | Tecnologias |
+|---|---|---|
+| **Servidor** (`server/`) | O "cérebro": guarda o estoque, aplica todas as regras (entrada, baixa, locais, inventário, ordens de recebimento), grava cada movimento com data/hora e gera os relatórios. Serve as telas do PC e do coletor e a API que o coletor usa. | Python 3.11, **FastAPI** (API HTTP/JSON), **Uvicorn** (servidor web), **Pydantic** (validação dos dados), **SQLite** em modo WAL (banco em um arquivo), **fpdf2** (relatórios PDF), **PyInstaller** (gera o `WMS-Servidor.exe`), **pytest** (testes automáticos) |
+| **Tela do PC** (`server/app/static/index.html`) | Sistema de estoque no navegador: Dashboard, Estoque (mover entre locais), Locais, Produtos, Ordens de recebimento, Baixa, Inventário e Histórico. Atualiza sozinha a cada 5 s (as leituras do coletor aparecem na hora). | HTML, CSS e **JavaScript puro** (sem framework), `fetch` para a API, tema claro/escuro automático |
+| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Localizar etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
+| **AppCenter** (`AppCenter.apk`, `coletor/appcenter/`) | Tela inicial do coletor em **modo quiosque** (como o AppCenter dos MC9090): fundo branco e só os apps liberados; área do administrador com 5 toques + PIN. Volta sozinho ao ligar o coletor. | **Kotlin**, só o Android (sem bibliotecas), **Device Owner** (`DevicePolicyManager`), modo **Lock Task** do Android, `activity-alias` de tela inicial (HOME), `BootReceiver` |
+
+Os três arquivos prontos (`WMS-Servidor.exe`, `ColetorWMS.apk` e `AppCenter.apk`) são gerados pelo **GitHub Actions**
+(`.github/workflows/build.yml`) a cada alteração no `main`: roda os testes, compila e publica na página **Releases**.
+
 ## Jeito fácil: baixar pronto
 
 Na página **Releases** do repositório (lado direito, "Releases" → última versão), baixe:
@@ -24,6 +39,7 @@ Na página **Releases** do repositório (lado direito, "Releases" → última ve
 |---|---|---|
 | `WMS-Servidor.exe` | PC com Windows (qualquer um, sem instalar nada) | Crie uma pasta (ex.: `C:\WMS`), coloque o `.exe` nela e dê dois cliques. Já vem com tudo (Python, servidor, telas do PC e do coletor). O navegador abre sozinho em http://localhost:8000 e a janela mostra o **endereço para o coletor**. O banco fica em **AppData\Local\MiniWMS\estoque.db** do usuário (pasta que a Proteção contra ransomware do Windows não bloqueia); o caminho aparece na janela. Para fazer backup, copie esse arquivo. Para desligar, feche a janela. |
 | `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app **procura o servidor na rede Wi-Fi sozinho**; se não achar, digite o endereço que aparece no topo da tela do PC ("📱 Coletor"). O menu **Config** tem "Procurar servidor na rede". Depois configure o DataWedge (seção 2). |
+| `AppCenter.apk` | Coletor Zebra (opcional) | Tela inicial em modo quiosque. A ativação precisa do ADB uma vez (seção 2b). |
 
 - Porta: o servidor usa a 8000. Se ela estiver ocupada, a janela avisa. Para usar outra, abra um Prompt na pasta e rode
   `set WMS_PORTA=8080` e depois `WMS-Servidor.exe` (no coletor, use o endereço com a porta nova).
@@ -33,8 +49,6 @@ Na página **Releases** do repositório (lado direito, "Releases" → última ve
 - Na primeira execução, o Windows pode mostrar "O Windows protegeu o computador": clique em *Mais informações* e depois em *Executar assim mesmo*.
 - Quando aparecer o aviso do Firewall, clique em **Permitir acesso**. Isso é necessário para o coletor alcançar o PC.
 - O PC e o coletor precisam estar na mesma rede Wi-Fi.
-
-Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/workflows/build.yml`) a cada alteração no `main`.
 
 ## Funções
 
@@ -48,7 +62,7 @@ Os dois arquivos são gerados automaticamente pelo GitHub Actions (`.github/work
 | PC | **Baixa** (com o EPC ou por quantidade, escolhendo o local), **Inventário** e **Histórico** (com **Relatório PDF** dos movimentos filtrados) |
 | Coletor | **Recebimento**: escolhe a ordem e o item, lê as etiquetas (cada uma vai na hora para o servidor) |
 | Coletor | **Entrada** sem ordem: produto da lista, etiquetas RFID ou quantidade |
-| Coletor | **Baixa automática**: escolhe o **motivo** (consumo...) e o **local de onde sai**; cada etiqueta lida é baixada na hora (etiqueta de outro local é ignorada); "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade |
+| Coletor | **Baixa**: escolhe o **motivo** (consumo...) e o **local de onde sai**; as etiquetas lidas entram em **Para baixar** (só as que estão em estoque naquele local; dá para tirar alguma) e a baixa só é feita ao tocar em **Confirmar baixa**; "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade |
 | Coletor | **Inventário**: inicia no coletor, lê as etiquetas; ao finalizar, etiqueta não lida sai e etiqueta achada volta |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 | Coletor | **Config**: volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa e Localizar, e servidor (procurar na rede ou digitar) |
@@ -67,11 +81,11 @@ Na baixa por RFID, a tag já indica o lote. Se existir outro lote que vence ante
 monta a lista de separação em ordem de endereço) → separar e conferir cada linha → *Confirmar expedição* (baixa com
 motivo VENDA e o número do pedido como documento). Cancelar devolve a reserva.
 
-**Ordem de recebimento (pré-recebimento)**: no PC, *Ordens de recebimento* → nota fiscal, fornecedor e itens
-esperados (produto, lote, validade, quantidade). No coletor, *Recebimento* → escolhe a ordem → toca no item (ou bipa
-o código de barras do produto) → aperta o gatilho nas etiquetas. Cada etiqueta é gravada na hora e aparece no PC.
-O sistema recusa etiqueta já em estoque, já lida em outra ordem e item que já completou a quantidade. *Finalizar*
-(no PC ou no coletor) dá entrada de tudo que foi lido, com a NF como documento, e mostra as divergências.
+**Ordem de recebimento (pré-recebimento)**: no PC, *Ordens de recebimento* → produtos e quantidade esperada. No
+coletor, *Recebimento* → escolhe a ordem → toca no item (ou bipa o código de barras do produto) → aperta o gatilho
+nas etiquetas. Cada etiqueta é gravada na hora e aparece no PC. O sistema recusa etiqueta já em estoque, já lida em
+outra ordem e item que já completou a quantidade. *Finalizar* (no PC ou no coletor) dá entrada de tudo que foi lido
+no Local-01 e mostra as divergências. As ordens fechadas ficam listadas em acordeão (clique para abrir).
 
 **Inventário**: cada contagem (do PC ou do coletor) é gravada. A tela mostra, lote a lote,
 *Sistema × Contado × Diferença*. Ao **fechar**, o saldo do sistema passa a ser o contado
@@ -83,22 +97,6 @@ Para só parar de usar, desmarque *Ativo*.
 **Limpar tudo** (menu lateral, grupo *Sistema*): zera o banco para recomeçar uma aula. Opcionalmente mantém
 o cadastro de produtos e locais e apaga só a movimentação.
 
----|---|---|
-| Cadastro de produtos (SKU, descrição, EAN, mínimo) | ✔ | — |
-| Posição de estoque por produto e lote, com validade | ✔ | Consulta |
-| Entrada | Quantidade digitada | RFID (cada tag = 1 unidade) ou código de barras + quantidade |
-| Baixa | Quantidade (FEFO automático) ou EPC | RFID ou código de barras + quantidade (FEFO) |
-| Inventário (contagem × sistema) | Abrir, contar item por item, ver diferenças e fechar | Contar por RFID ou por código de barras |
-| Histórico de movimentos | ✔ | — |
-
-**FEFO** (*First Expired, First Out*): na baixa por quantidade, o servidor tira primeiro do lote
-que vence antes. Lotes vencidos ficam de fora, a não ser que o motivo da baixa seja `VENCIMENTO`.
-Unidades com etiqueta RFID também ficam de fora: elas só saem lendo a tag.
-Na baixa por RFID, a tag já indica o lote. Se existir outro lote que vence antes, o servidor devolve um aviso.
-
-**Inventário**: cada contagem (do PC ou do coletor) é gravada. A tela mostra, lote a lote,
-*Sistema × Contado × Diferença*. Ao **fechar**, o saldo do sistema passa a ser o contado,
-e cada ajuste fica registrado nos movimentos.
 
 ---
 
@@ -126,6 +124,7 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 | `server/app/db.py` | Tabelas do banco e migração automática de bancos antigos |
 | `server/app/estoque.py` | **Regras**: entrada, baixa FEFO, baixa por tag, endereços, bloqueio, pedidos, inventário |
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
+| `server/app/relatorios.py` | Relatórios em PDF (estoque por local e histórico) |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
 | `server/app/static/m.html` | Telas do coletor (abre em `/m`; dentro do app ou no Chrome) |
 | `server/wms_servidor.py` | Inicia o servidor e abre o navegador (vira o `WMS-Servidor.exe`) |
@@ -157,6 +156,69 @@ o navegador não faz sozinho:
 
 Telas: Recebimento, Entrada, Baixa, Inventário, Localizar etiqueta e Config. Como as telas vêm do servidor,
 qualquer melhoria chega ao coletor sem reinstalar o app.
+
+### Como o RFID funciona no app
+
+O leitor RFID do MC3300R fica **dentro do coletor** e é controlado pelo **Zebra RFID SDK API3** (arquivo
+`API3_LIB-release.aar`, o mesmo SDK do app 123RFID). Todo o código está em `Rfid.kt`; a `MainActivity`
+liga o RFID à tela.
+
+**1. Ativação (conexão com o leitor)**
+
+- Ao abrir o app, `Rfid.conectar()` procura o leitor como o app de exemplo da Zebra:
+  `Readers(context, ENUM_TRANSPORT.SERVICE_USB)` e, se não achar, `ENUM_TRANSPORT.SERVICE_SERIAL`
+  (no MC3300R é o **serial** que acha o leitor interno). `GetAvailableRFIDReaderList()` lista os leitores e
+  `rfidReader.connect()` conecta ao primeiro.
+- Depois de conectar, `configurar()` deixa o leitor pronto:
+  - **eventos**: `addEventsListener`, `setHandheldEvent(true)` (gatilho) e `setTagReadEvent(true)` (tags lidas);
+  - **gatilhos de leitura** `START/STOP_TRIGGER_TYPE_IMMEDIATE`: a leitura começa e para quando o app manda,
+    não sozinha;
+  - **antena**: potência máxima (`setTransmitPowerIndex` no último nível), modo de RF padrão;
+  - **sessão S0** (`SESSION_S0`): toda etiqueta responde a cada rodada, bom para contar poucas dezenas de tags
+    (na S1 a etiqueta lida fica alguns segundos "calada");
+  - **LED**: `setLedBlinkEnable(true)`, o LED verde pisca a cada etiqueta lida.
+- A tela recebe `statusRfid("RFID conectado: MC3300R... (serial)")`. Se nada funcionar, recebe o motivo.
+- **Em segundo plano** (`onStop`) o app solta o leitor (`disconnect` + `Dispose`) e devolve o código de barras
+  ao DataWedge: assim o 123RFID e outros apps conseguem usar o RFID. Ao voltar, conecta de novo.
+
+**2. Gatilho: RFID ou código de barras**
+
+O gatilho é **um só** para os dois leitores. Cada tela diz qual quer (`ColetorApp.gatilhoRfid(true/false)`):
+
+- **RFID**: `Config.setTriggerMode(RFID_MODE)` e o app **desliga o scanner do DataWedge** por Intent
+  (`com.symbol.datawedge.api.ACTION` → `SCANNER_INPUT_PLUGIN = DISABLE_PLUGIN`); senão o DataWedge "pega" o gatilho.
+- **Código de barras**: `setTriggerMode(BARCODE_MODE)` e religa o DataWedge (`ENABLE_PLUGIN`), que "digita" o
+  código na tela.
+
+**3. Leitura**
+
+- Apertar o gatilho gera `eventStatusNotify` com `HANDHELD_TRIGGER_PRESSED` → `Actions.Inventory.perform()`
+  (começa a ler). Soltar (`HANDHELD_TRIGGER_RELEASED`) → `Actions.Inventory.stop()`.
+- Cada grupo de etiquetas lidas gera `eventReadNotify` → `Actions.getReadTags(100)` → o **EPC** de cada tag
+  (`tag.tagID`) vai para a tela com `leituraRfid(epc)` (função JavaScript chamada pelo `evaluateJavascript`).
+- A **tela** (`m.html`) decide o que fazer com o EPC: ignora repetidos na mesma tela e junta as leituras em grupos
+  de 250 ms. No Recebimento, cada leitura vai na hora para o servidor; na Baixa, a tela só confere cada etiqueta
+  (`GET /api/tags/{epc}`) e mostra em *Para baixar*; a baixa (`POST /api/baixas`) só vai ao tocar em *Confirmar*. Leitura inválida é ignorada em silêncio;
+  só a falta de conexão aparece como erro.
+- **Potência** (`ColetorApp.potencia(%)`): `setTransmitPowerIndex` proporcional; menos potência lê só o que
+  está perto. Em *Config* há uma para Recebimento/Entrada, uma para Baixa e uma para Localizar.
+
+**4. Localizar etiqueta (quente/frio)**
+
+Com um EPC escolhido (`ColetorApp.localizar(epc)`), o gatilho faz `Actions.TagLocationing.Perform(epc)` em vez
+do inventário. O leitor devolve em `eventReadNotify` a **distância relativa** (`LocationInfo.relativeDistance`,
+0 = longe, 100 = colado), que vai para a tela com `proximidadeRfid(n)`: barra quente/frio e bipe mais rápido.
+O LED verde pisca em estrobo (`RfidServiceMgr.getInstance().ledBlink()`), mais rápido quanto mais perto.
+
+**5. Cuidados que evitam o leitor travar**
+
+- **Fila única**: todo comando ao leitor vai para uma fila de uma thread só (`Executors.newSingleThreadExecutor`).
+  Trocar o gatilho ou a potência no meio de uma leitura faz o SDK recusar e às vezes o leitor para de responder.
+- Se `perform()` for recusado (leitor ainda ocupado), o app para, espera 150 ms e tenta de novo.
+- Todo erro do SDK é tratado (`catch Throwable`): um problema no RFID nunca fecha o app.
+- **Carregando no cabo USB o leitor não lê** (o SDK responde "Charging in Progress"): use o coletor fora do cabo.
+- `setLedBlinkEnable` fica gravado no serviço RFID do sistema e vale para todos os apps: **nunca** mandar `false`,
+  senão o LED para de acender em qualquer leitura (inclusive no 123RFID).
 
 **Como a tela entende cada leitura:** EPC (hexadecimal com 16+ caracteres) = RFID; código igual a um endereço
 cadastrado = endereço; o resto = produto (EAN ou SKU). Por isso vale imprimir etiquetas com o código dos endereços.
@@ -260,9 +322,12 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 
 | Arquivo | O que tem |
 |---|---|
-| `MainActivity.kt` | WebView com a tela /m, ponte JavaScript (`ColetorApp`), endereço do servidor |
-| `Rfid.kt` | Leitor RFID Zebra (API3): conectar, gatilho, potência, tags lidas |
-| `Servidor.kt` | Endereço do servidor |
+| `coletor/app/.../MainActivity.kt` | WebView com a tela /m, ponte JavaScript (`ColetorApp`), DataWedge, volume, teclado |
+| `coletor/app/.../Rfid.kt` | Leitor RFID Zebra (API3): conectar, gatilho, potência, leitura, localizar, LED |
+| `coletor/app/.../Descoberta.kt` | Procura o servidor na rede Wi-Fi |
+| `coletor/app/.../Servidor.kt` | Endereço do servidor (guardado no aparelho) |
+| `coletor/appcenter/.../MainActivity.kt` | AppCenter: grade de apps, 5 toques + PIN, área do administrador |
+| `coletor/appcenter/.../Quiosque.kt` | Device Owner, lock task, tela inicial fixa, sair do quiosque até reiniciar |
 
 ### Ponte entre o app e a tela
 
@@ -270,8 +335,12 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 |---|---|---|
 | App → tela | `leituraRfid(epc)` | cada etiqueta lida pelo RFID |
 | App → tela | `statusRfid(mensagem)` | leitor RFID conectou (ou não) |
+| App → tela | `gatilhoRfidEvento(1/0)` | gatilho apertado / solto |
+| App → tela | `fimLeituraRfid(n)` | fim da leitura: quantas etiquetas o leitor viu |
+| App → tela | `proximidadeRfid(0..100)` | Localizar: distância da etiqueta procurada |
 | Tela → app | `ColetorApp.gatilhoRfid(true/false)` | gatilho lê RFID ou código de barras (`setTriggerMode`) |
 | Tela → app | `ColetorApp.potencia(%)` | potência da antena |
+| Tela → app | `ColetorApp.localizar(epc)` / `procurar(true/false)` | Localizar: escolhe a etiqueta / procura sem o gatilho |
 | Tela → app | `ColetorApp.servidor()` | abre o popup do endereço do servidor |
 
 ---
