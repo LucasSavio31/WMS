@@ -2,6 +2,7 @@ package br.curso.wms
 
 import android.content.Context
 import android.util.Log
+import com.zebra.rfid.RfidServiceMgr
 import com.zebra.rfid.api3.ENUM_TRANSPORT
 import com.zebra.rfid.api3.ENUM_TRIGGER_MODE
 import com.zebra.rfid.api3.HANDHELD_TRIGGER_EVENT_TYPE
@@ -294,6 +295,35 @@ object Rfid : RfidEventsListener {
         alvo = epc?.trim()?.uppercase()?.ifEmpty { null }
         log("localizar: alvo ${alvo ?: "nenhum"}")
         if (alvo == null) naFila("não parou a localização") { leitor?.let { pararLocalizar(it) } }
+        else ligarEstrobo()
+    }
+
+    // LED verde em estrobo no modo localizar. Quem acende o LED é o serviço RFID do sistema
+    // (o mesmo que pisca o LED a cada leitura no 123RFID): ledBlink() dá uma piscada.
+    // Procurando, pisca mais rápido quanto mais perto da etiqueta.
+    @Volatile private var proximidade = 0
+    private var estrobo: Thread? = null
+
+    private fun ligarEstrobo() {
+        if (estrobo?.isAlive == true) return
+        estrobo = thread(name = "estrobo") {
+            val servico = try { RfidServiceMgr.getInstance() } catch (e: Throwable) { null }
+            if (servico == null) {
+                Log.w(TAG, "LED: serviço RFID não encontrado")
+                return@thread
+            }
+            log("LED: estrobo ligado")
+            while (alvo != null) {
+                try {
+                    servico.ledBlink()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "LED: sem suporte (${e.message})")   // segue sem piscar, sem erro na tela
+                    return@thread
+                }
+                Thread.sleep(if (localizando) 60L + (100 - proximidade.coerceIn(0, 100)) * 3L else 150L)
+            }
+            log("LED: estrobo desligado")
+        }
     }
 
     /** Liga/desliga a procura sem usar o gatilho (botão da tela). */
@@ -348,7 +378,10 @@ object Rfid : RfidEventsListener {
         try {
             val tags = leitor?.Actions?.getReadTags(100) ?: return
             if (localizando) {
-                for (tag in tags) if (tag.isContainsLocationInfo) aoLocalizar?.invoke(tag.LocationInfo.relativeDistance.toInt())
+                for (tag in tags) if (tag.isContainsLocationInfo) {
+                    proximidade = tag.LocationInfo.relativeDistance.toInt()
+                    aoLocalizar?.invoke(proximidade)
+                }
                 return
             }
             lidasNaLeitura += tags.size

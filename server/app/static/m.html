@@ -161,6 +161,7 @@
   dialog::backdrop { background: rgba(0,0,0,.5); }
   dialog h3 { margin: 0 0 10px; font-size: 17px; }
   dialog .botoes { margin-top: 12px; }
+  #rodape { flex: none; text-align: center; font-size: 12.5px; color: var(--texto-2); padding: 5px 8px; border-top: 1px solid var(--borda); }
   #msg { flex: none; padding: 10px 12px; font-size: 15px; font-weight: 600; white-space: pre-line; display: none; border-top: 3px solid; max-height: 35vh; overflow-y: auto; }
   #msg.ok { display: block; background: var(--fundo-sucesso); border-color: var(--sucesso); color: var(--texto); }
   #msg.erro { display: block; background: var(--fundo-perigo); border-color: var(--perigo); color: var(--texto); }
@@ -200,6 +201,7 @@
           spellcheck="false" tabindex="-1" aria-hidden="true"></textarea>
 <main id="tela"></main>
 <div id="msg" role="status"></div>
+<footer id="rodape"></footer>
 <div id="tecladoTela" hidden></div>
 
 <!-- ⌨ numa tela sem campo de digitação: digitar um código ou EPC à mão -->
@@ -736,6 +738,16 @@ tela.addEventListener("click", (ev) => {
 
 const telas = {};
 
+// Rodapé (todas as telas): servidor, data e hora do servidor
+async function atualizarRodape() {
+  try {
+    const st = await api("GET", "/api/status");
+    $("rodape").textContent = `Servidor ${location.host} · ${dataBR(st.data_hora)} ${st.data_hora.slice(11, 16)}`;
+  } catch { $("rodape").textContent = `Servidor ${location.host} · sem conexão`; }
+}
+atualizarRodape();
+setInterval(atualizarRodape, 30000);
+
 // ======================================================================= MENU
 telas.menu = {
   titulo: "WMS Coletor",
@@ -745,13 +757,11 @@ telas.menu = {
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
       ${item("localizar", "🎯", "Localizar etiqueta")}${item("config", "⚙️", "Config")}
-    </div>
-    <p class="fraco" style="text-align:center;margin-top:14px" id="infoServidor"></p>`;
+    </div>`;
     try {
-      const [r, st] = await Promise.all([api("GET", "/api/resumo"), api("GET", "/api/status")]);
+      const r = await api("GET", "/api/resumo");
       if (telaAtual !== "menu") return;
       $("bRec").textContent = r.recebimentos_abertos || ""; $("bInv").textContent = r.inventarios_abertos || "";
-      $("infoServidor").textContent = `Servidor ${location.host} · ${dataBR(st.data_hora)} ${st.data_hora.slice(11, 16)}`;
     } catch (e) { msg(e.message, "erro"); }
   },
   rfid() { msg("Escolha uma opção do menu", "info", false); },
