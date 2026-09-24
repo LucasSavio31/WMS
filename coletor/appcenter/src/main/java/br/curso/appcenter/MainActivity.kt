@@ -59,6 +59,7 @@ class MainActivity : Activity() {
         super.onResume()
         if (quiosque.liberado) {
             // Admin saiu do quiosque neste boot: a tela inicial é o Android completo até reiniciar
+            if (quiosque.emQuiosque()) try { stopLockTask() } catch (_: Throwable) {}
             quiosque.launcherPadrao()?.let { startActivity(it); return }
         }
         quiosque.ativar(this)
