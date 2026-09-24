@@ -1032,7 +1032,8 @@ telas.baixa = {
       for (const t of ok) this.baixadas.unshift({ epc: t.epc, ok: true, info: `${t.sku}${lotePonto(t.lote)}` });
       for (const t of r.tags) this.pendentes.delete(t.epc);   // a que falhou (já baixada em outro lugar) sai da lista
       const ignoradas = r.tags.length - ok.length;
-      msg(`✓ ${ok.length} baixada(s)` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
+      bipe("ok");   // bipe ao confirmar a baixa
+      msg(`✓ ${ok.length} baixada(s)` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""), "ok", false);
       this.desenharPendentes(); this.desenhar();
     });
   },
@@ -1085,7 +1086,10 @@ telas.baixa = {
     await Promise.all(epcs.map(async (epc) => {
       try {
         const t = await api("GET", "/api/tags/" + encodeURIComponent(epc));
-        if (t.status === "ATIVA" && (!local || t.endereco_id === local)) this.pendentes.set(t.epc, t);
+        if (t.status === "ATIVA" && (!local || t.endereco_id === local) && !this.pendentes.has(t.epc)) {
+          this.pendentes.set(t.epc, t);
+          bipe("ok");   // bipe a cada etiqueta que entra em "Para baixar" (igual à Entrada)
+        }
       } catch (e) {
         if (/conex|Wi-Fi/i.test(e.message)) { this.vistas.delete(epc); msg(e.message, "erro"); }   // sem rede: pode ler de novo
       }
