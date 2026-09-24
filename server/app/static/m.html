@@ -94,7 +94,7 @@
   #tecladoTela.numerico button { height: 52px; font-size: 22px; }
   body.com-teclado main { padding-bottom: 250px; }
   dialog #tecladoTela { position: fixed; }
-  body.com-teclado dialog[open] { margin: 70px auto auto; }
+  dialog[open] { margin: 70px auto auto; }   /* diálogo sempre no topo: não pula quando o teclado abre */
   .potencia .dir { float: right; }
   header #teclado.ligado { background: var(--primaria); }
   header #modo.barras { background: #ffb74d33; }
@@ -542,11 +542,13 @@ kb.el.addEventListener("click", (ev) => {
 document.addEventListener("focusin", (ev) => {
   if (!kb.el.hidden && ehEditavel(ev.target) && ev.target !== kb.alvo) abrirTecladoTela(ev.target);   // trocou de campo
 });
-document.addEventListener("pointerdown", (ev) => {   // teclado ligado (⌨): tocar num campo abre o teclado; tocar fora fecha
+// Teclado ligado (⌨): tocar num campo abre o teclado (no fim do toque, para a tela não pular sob o dedo);
+// tocar fora fecha.
+document.addEventListener("click", (ev) => {
   if (ev.target.closest("#tecladoTela, #teclado")) return;
-  if (cfg.teclado && ehEditavel(ev.target) && ev.target !== leitura) setTimeout(() => abrirTecladoTela(ev.target), 0);
+  if (cfg.teclado && ehEditavel(ev.target) && ev.target !== leitura) abrirTecladoTela(ev.target);
   else if (!kb.el.hidden) fecharTecladoTela();
-});
+}, true);
 window.addEventListener("hashchange", () => { if (!kb.el.hidden) fecharTecladoTela(); });
 
 /** ⌨ do cabeçalho: liga/desliga o teclado. Ligado: abre no campo da tela (sem campo, "Digitar código")
