@@ -81,6 +81,10 @@
   .captura { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; overflow: hidden; }
   header #modo, header #teclado { width: 34px; font-size: 18px; border-radius: 8px; }
   .potencia { margin: 8px 0 4px; }
+  /* Consulta: etiquetas de cada item (abre com um toque) */
+  details.etiquetas summary { cursor: pointer; color: var(--primaria); font-size: 14px; margin-top: 4px; }
+  details.etiquetas ul { margin: 6px 0 0; padding-left: 18px; }
+  details.etiquetas li { font-size: 13px; padding: 2px 0; }
   /* Teclado na tela (o Gboard não mostra as teclas no MC3300 por causa do teclado físico) */
   #tecladoTela { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: #1b2230; padding: 4px 3px 6px;
                  box-shadow: 0 -4px 14px #0006; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
@@ -209,6 +213,13 @@
   <h3>Digitar código</h3>
   <input id="edDigitar" autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="done" placeholder="Código de barras, SKU ou EPC">
   <div class="botoes"><button class="b" type="button" id="digCancelar">Cancelar</button><button class="b primario" type="submit">OK</button></div>
+</form></dialog>
+
+<!-- Config protegida por senha -->
+<dialog id="dlgSenha"><form method="dialog" id="formSenha">
+  <h3>Senha da Config</h3>
+  <input id="edSenha" type="password" inputmode="numeric" autocomplete="off" enterkeyhint="done" placeholder="Senha">
+  <div class="botoes"><button class="b" type="button" id="senhaCancelar">Cancelar</button><button class="b primario" type="submit">OK</button></div>
 </form></dialog>
 
 <!-- Botão ⚙: configuração do servidor -->
@@ -716,8 +727,11 @@ function cartaoProduto(p, trocar = true) {
 // ======================================================================= navegação
 let telaAtual = "menu";
 const tela = $("tela");
+const SENHA_CONFIG = "1234";
+let configLiberada = false;   // pede a senha toda vez que entra na Config
 function abrir(nome) {
   if (!telas[nome]) nome = "menu";
+  if (nome !== "config") configLiberada = false;
   if (telaAtual === "localizar" && nome !== "localizar") telas.localizar.sair();
   telaAtual = nome;
   $("titulo").textContent = telas[nome].titulo;
@@ -756,7 +770,8 @@ telas.menu = {
     tela.innerHTML = `<div class="grade-menu">
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
-      ${item("localizar", "🎯", "Localizar etiqueta")}${item("config", "⚙️", "Config")}
+      ${item("consulta", "🔍", "Consulta<br><small class=fraco>estoque por local</small>")}${item("localizar", "🎯", "Localizar etiqueta")}
+      ${item("config", "⚙️", "Config")}
     </div>`;
     try {
       const r = await api("GET", "/api/resumo");
@@ -1285,9 +1300,66 @@ window.proximidadeRfid = (v) => telas.localizar.proximidade(Number(v));
 setInterval(() => telas.localizar.tique(), 50);
 
 // ======================================================================= CONFIG
+// ======================================================================= CONSULTA
+// Escolhe o local e consulta: itens com quantidade e as etiquetas vinculadas (igual ao PC).
+telas.consulta = {
+  titulo: "Consulta",
+  abrir() {
+    tela.innerHTML = `<div class="card">
+        <label class="campo"><span>Local</span><select id="csLocal">${enderecos.map((e) =>
+          `<option value="${e.id}" ${e.id === cfg.localConsulta ? "selected" : ""}>${esc(e.codigo)}</option>`).join("")}</select></label>
+        <div class="botoes"><button class="b primario" data-acao="consultar" id="csBotao">🔍 Consultar</button></div></div>
+      <div id="csResultado"></div>`;
+  },
+  async consultar(b) {
+    const local = Number($("csLocal").value);
+    cfg.localConsulta = local; salvarCfg();
+    await executar(b, async () => {
+      const [dash, tags] = await Promise.all([api("GET", "/api/dash"),
+        api("GET", `/api/tags?status=ATIVA&endereco_id=${local}&limite=5000`)]);
+      if (telaAtual !== "consulta") return;
+      const l = dash.find((x) => x.id === local);
+      if (!l) return msg("Local não encontrado", "info");
+      const porItem = new Map();
+      for (const t of tags) (porItem.get(t.produto_id) || porItem.set(t.produto_id, []).get(t.produto_id)).push(t.epc);
+      $("csResultado").innerHTML = `<div class="card"><h2>${esc(l.codigo)} <span class="dir"><span class="contador">${num(l.quantidade)}</span></span></h2>
+          <div class="fraco">${l.descricao ? esc(l.descricao) + " · " : ""}${l.itens.length} item(ns) · ${num(tags.length)} etiqueta(s)</div></div>` +
+        (l.itens.map((i) => {
+          const epcs = porItem.get(i.produto_id) || [];
+          return `<div class="card"><div style="display:flex;align-items:baseline;gap:8px">
+              <div class="produto" style="flex:1">${esc(i.sku)}</div><b style="font-size:18px">${num(i.quantidade)} ${esc(i.unidade)}</b></div>
+            <div class="fraco">${esc(i.descricao)}</div>
+            ${epcs.length ? `<details class="etiquetas"><summary>${epcs.length} etiqueta(s) RFID</summary>
+              <ul class="mono">${epcs.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></details>`
+              : '<div class="fraco" style="margin-top:4px">sem etiqueta RFID</div>'}</div>`;
+        }).join("") || '<div class="card"><p class="fraco" style="margin:0">Nenhum item neste local</p></div>');
+    });
+  },
+  rfid() {},
+  codigo() {},
+};
+
+function pedirSenhaConfig() {
+  $("edSenha").value = "";
+  $("dlgSenha").showModal();
+  $("edSenha").focus();
+  abrirTecladoTela($("edSenha"));   // teclado numérico na tela (o Gboard não aparece no MC3300)
+}
+$("formSenha").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const ok = $("edSenha").value === SENHA_CONFIG;
+  $("dlgSenha").close();
+  if (ok) { configLiberada = true; telas.config.abrir(); }
+  else { msg("Senha incorreta", "info"); location.hash = "menu"; }
+});
+$("senhaCancelar").addEventListener("click", () => { $("dlgSenha").close(); location.hash = "menu"; });
+$("dlgSenha").addEventListener("cancel", (ev) => { ev.preventDefault(); $("dlgSenha").close(); location.hash = "menu"; });
+$("dlgSenha").addEventListener("close", () => { if (kb.alvo === $("edSenha")) fecharTecladoTela(); });
+
 telas.config = {
   titulo: "Config",
   abrir() {
+    if (!configLiberada) { tela.innerHTML = ""; pedirSenhaConfig(); return; }
     let volume = cfg.volume;
     try { if (window.ColetorApp?.volumeAtual) volume = window.ColetorApp.volumeAtual(); } catch {}
     tela.innerHTML = `<div class="card"><h2>Volume do bipe <span class="dir"><b id="cfVolTxt">${volume}%</b></span></h2>

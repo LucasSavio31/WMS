@@ -24,6 +24,7 @@ import android.webkit.WebChromeClient
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -78,6 +79,9 @@ class MainActivity : Activity() {
         web.settings.domStorageEnabled = true
         web.settings.mediaPlaybackRequiresUserGesture = false   // bipes da página
         web.settings.setSupportZoom(false)
+        // Sem cache: toda melhoria da tela no servidor aparece na hora ao abrir o app
+        web.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        web.clearCache(true)
         web.addJavascriptInterface(Ponte(), "ColetorApp")
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView, url: String) {
@@ -100,6 +104,8 @@ class MainActivity : Activity() {
                 }
             }
         }
+
+        configurarDataWedge()
 
         // Primeira vez: procura o servidor na rede sozinho (se não achar, pergunta o endereço)
         if (prefs.contains("servidor")) abrirTela() else procurarServidor()
@@ -202,6 +208,47 @@ class MainActivity : Activity() {
                     .putExtra("com.symbol.datawedge.api.SCANNER_INPUT_PLUGIN", if (ligado) "ENABLE_PLUGIN" else "DISABLE_PLUGIN")
             )
         } catch (e: Throwable) {
+        }
+    }
+
+    /**
+     * Cria/atualiza sozinho o perfil "WMS" do DataWedge (API de Intent SET_CONFIG): associado a este app,
+     * código de barras ligado, RFID do DataWedge desligado (o RFID é do app) e saída por teclado com ENTER.
+     * Assim ninguém precisa configurar o DataWedge à mão.
+     */
+    private fun configurarDataWedge() {
+        try {
+            fun plugin(nome: String, vararg params: Pair<String, String>) = Bundle().apply {
+                putString("PLUGIN_NAME", nome)
+                putString("RESET_CONFIG", "true")
+                putBundle("PARAM_LIST", Bundle().apply { params.forEach { (k, v) -> putString(k, v) } })
+            }
+            val app = Bundle().apply {
+                putString("PACKAGE_NAME", packageName)
+                putStringArray("ACTIVITY_LIST", arrayOf("*"))
+            }
+            val enter = plugin("BDF", "bdf_enabled" to "true", "bdf_send_data" to "true", "bdf_send_enter" to "true")
+                .apply { putString("OUTPUT_PLUGIN_NAME", "KEYSTROKE") }
+            val perfil = Bundle().apply {
+                putString("PROFILE_NAME", "WMS")
+                putString("PROFILE_ENABLED", "true")
+                putString("CONFIG_MODE", "CREATE_IF_NOT_EXIST")
+                putParcelableArray("APP_LIST", arrayOf(app))
+                putParcelableArrayList("PLUGIN_CONFIG", arrayListOf(
+                    plugin("BARCODE", "scanner_selection" to "auto", "scanner_input_enabled" to "true"),
+                    plugin("RFID", "rfid_input_enabled" to "false"),
+                    plugin("KEYSTROKE", "keystroke_output_enabled" to "true"),
+                    enter,
+                    plugin("INTENT", "intent_output_enabled" to "false"),
+                ))
+            }
+            sendBroadcast(Intent("com.symbol.datawedge.api.ACTION")
+                .putExtra("com.symbol.datawedge.api.SET_CONFIG", perfil)
+                .putExtra("SEND_RESULT", "LAST_RESULT")
+                .putExtra("COMMAND_IDENTIFIER", "perfil_wms"))
+            Log.i(TAG, "DataWedge: perfil WMS configurado")
+        } catch (e: Throwable) {
+            Log.w(TAG, "DataWedge: não configurou o perfil (${e.message})")
         }
     }
 

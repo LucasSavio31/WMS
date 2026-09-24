@@ -21,6 +21,8 @@ from . import db, estoque, relatorios
 from .estoque import MOTIVOS_BAIXA, ErroEstoque
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
+# Telas sem cache: o navegador/coletor sempre pega a versão mais nova da tela
+SEM_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 Origem = Literal["PC", "COLETOR"]
 Meio = Literal["MANUAL", "BARRAS", "RFID"]
 Motivo = Literal["CONSUMO", "VENDA", "AVARIA", "PERDA", "VENCIMENTO", "DEVOLUCAO"]
@@ -87,13 +89,13 @@ def csv_resposta(nome, colunas, linhas):
 
 @app.get("/", include_in_schema=False)
 def pagina_inicial():
-    return FileResponse(os.path.join(STATIC, "index.html"))
+    return FileResponse(os.path.join(STATIC, "index.html"), headers=SEM_CACHE)
 
 
 @app.get("/m", include_in_schema=False)
 def tela_coletor():
     """Tela do coletor pelo navegador (Chrome + DataWedge com RFID Input)."""
-    return FileResponse(os.path.join(STATIC, "m.html"))
+    return FileResponse(os.path.join(STATIC, "m.html"), headers=SEM_CACHE)
 
 
 @app.get("/api/status")
@@ -388,13 +390,19 @@ def liberar(lote_id: int, con: Con = Depends(conexao)):
 
 
 @app.get("/api/tags")
-def listar_tags(status: Optional[str] = None, limite: int = 200, con: Con = Depends(conexao)):
-    """Etiquetas RFID (o simulador do coletor usa como "tags perto da antena")."""
+def listar_tags(status: Optional[str] = None, endereco_id: Optional[int] = None, limite: int = 200,
+                con: Con = Depends(conexao)):
+    """Etiquetas RFID (filtro por status e por local; a Consulta do coletor usa)."""
+    where, args = [], []
+    if status:
+        where.append("t.status=?"); args.append(status)
+    if endereco_id:
+        where.append("l.endereco_id=?"); args.append(endereco_id)
     return db.linhas(con.execute(
-        f"""SELECT t.epc, t.status, l.lote, p.sku, p.descricao FROM tags t
+        f"""SELECT t.epc, t.status, l.lote, l.endereco_id, p.id AS produto_id, p.sku, p.descricao FROM tags t
             JOIN lotes l ON l.id=t.lote_id JOIN produtos p ON p.id=l.produto_id
-            {"WHERE t.status=?" if status else ""} ORDER BY p.sku, l.lote, t.epc LIMIT ?""",
-        ((status,) if status else ()) + (limite,)))
+            {"WHERE " + " AND ".join(where) if where else ""} ORDER BY p.sku, l.lote, t.epc LIMIT ?""",
+        (*args, min(max(limite, 1), 5000))))
 
 
 @app.post("/api/tags/{epc}/estornar")

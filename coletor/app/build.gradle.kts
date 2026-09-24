@@ -11,8 +11,8 @@ android {
         applicationId = "br.curso.wms"
         minSdk = 26          // MC3300R/MC3390R: Android 8.1 ou superior
         targetSdk = 34
-        versionCode = 20
-        versionName = "3.10"
+        versionCode = 21
+        versionName = "3.11"
     }
 
     // Chave fixa: cada versão nova instala por cima da anterior (projeto didático,

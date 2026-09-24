@@ -25,7 +25,7 @@ separados no coletor.
 |---|---|---|
 | **Servidor** (`server/`) | O "cérebro": guarda o estoque, aplica todas as regras (entrada, baixa, locais, inventário, ordens de recebimento), grava cada movimento com data/hora e gera os relatórios. Serve as telas do PC e do coletor e a API que o coletor usa. | Python 3.11, **FastAPI** (API HTTP/JSON), **Uvicorn** (servidor web), **Pydantic** (validação dos dados), **SQLite** em modo WAL (banco em um arquivo), **fpdf2** (relatórios PDF), **PyInstaller** (gera o `WMS-Servidor.exe`), **pytest** (testes automáticos) |
 | **Tela do PC** (`server/app/static/index.html`) | Sistema de estoque no navegador: Dashboard, Estoque (mover entre locais), Locais, Produtos, Ordens de recebimento, Baixa, Inventário e Histórico. Atualiza sozinha a cada 5 s (as leituras do coletor aparecem na hora). | HTML, CSS e **JavaScript puro** (sem framework), `fetch` para a API, tema claro/escuro automático |
-| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Localizar etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
+| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
 | **AppCenter** (`AppCenter.apk`, `coletor/appcenter/`) | Tela inicial do coletor em **modo quiosque** (como o AppCenter dos MC9090): fundo branco e só os apps liberados; área do administrador com 5 toques + PIN. Volta sozinho ao ligar o coletor. | **Kotlin**, só o Android (sem bibliotecas), **Device Owner** (`DevicePolicyManager`), modo **Lock Task** do Android, `activity-alias` de tela inicial (HOME), `BootReceiver` |
 
 Os três arquivos prontos (`WMS-Servidor.exe`, `ColetorWMS.apk` e `AppCenter.apk`) são gerados pelo **GitHub Actions**
@@ -45,7 +45,7 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Arquivo | Onde | Como usar |
 |---|---|---|
 | `WMS-Servidor.exe` | PC com Windows (qualquer um, sem instalar nada) | Crie uma pasta (ex.: `C:\WMS`), coloque o `.exe` nela e dê dois cliques. Já vem com tudo (Python, servidor, telas do PC e do coletor). O navegador abre sozinho em http://localhost:8000 e a janela mostra o **endereço para o coletor**. O banco fica em **AppData\Local\MiniWMS\estoque.db** do usuário (pasta que a Proteção contra ransomware do Windows não bloqueia); o caminho aparece na janela. Para fazer backup, copie esse arquivo. Para desligar, feche a janela. |
-| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app **procura o servidor na rede Wi-Fi sozinho**; se não achar, digite o endereço que aparece no topo da tela do PC ("📱 Coletor"). O menu **Config** tem "Procurar servidor na rede". Depois configure o DataWedge (seção 2). |
+| `ColetorWMS.apk` | Coletor Zebra | Copie para o coletor e instale. Talvez seja preciso permitir *instalar apps de fontes desconhecidas*. Na primeira vez, o app **procura o servidor na rede Wi-Fi sozinho**; se não achar, digite o endereço que aparece no topo da tela do PC ("📱 Coletor"). O menu **Config** tem "Procurar servidor na rede". O app configura o DataWedge sozinho. |
 | `AppCenter.apk` | Coletor Zebra (opcional) | Tela inicial em modo quiosque. A ativação precisa do ADB uma vez (seção 2b). |
 
 - Porta: o servidor usa a 8000. Se ela estiver ocupada, a janela avisa. Para usar outra, abra um Prompt na pasta e rode
@@ -71,8 +71,9 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Coletor | **Entrada** sem ordem: produto da lista, etiquetas RFID ou quantidade |
 | Coletor | **Baixa**: escolhe o **motivo** (consumo...) e o **local de onde sai**; as etiquetas lidas entram em **Para baixar** (só as que estão em estoque naquele local; dá para tirar alguma) e a baixa só é feita ao tocar em **Confirmar baixa**; "desfazer" devolve ao estoque; produto sem etiqueta: código de barras + quantidade |
 | Coletor | **Inventário**: inicia no coletor, lê as etiquetas; ao finalizar, etiqueta não lida sai e etiqueta achada volta |
+| Coletor | **Consulta**: escolhe o local e toca em **Consultar**: aparecem os itens daquele local com a quantidade e as etiquetas RFID vinculadas (toque para ver os EPCs), como no PC |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
-| Coletor | **Config**: volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa e Localizar, e servidor (procurar na rede ou digitar) |
+| Coletor | **Config** (protegida pela **senha 1234**): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa e Localizar, e servidor (procurar na rede ou digitar) |
 
 **Locais de estoque**: tudo que entra (ordem de recebimento ou entrada) vai para o **Local-01**. Quem não usa
 outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* e leve os itens pela tela
@@ -157,7 +158,7 @@ o navegador não faz sozinho:
 - Tela cheia do app; hora, Wi-Fi e bateria ficam na barra do próprio Android.
 - Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
 
-Telas: Recebimento, Entrada, Baixa, Inventário, Localizar etiqueta e Config. Como as telas vêm do servidor,
+Telas: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta e Config (com senha 1234). Como as telas vêm do servidor,
 qualquer melhoria chega ao coletor sem reinstalar o app.
 
 ### Como o RFID funciona no app
@@ -226,24 +227,23 @@ O LED verde pisca em estrobo (`RfidServiceMgr.getInstance().ledBlink()`), mais r
 **Como a tela entende cada leitura:** EPC (hexadecimal com 16+ caracteres) = RFID; código igual a um endereço
 cadastrado = endereço; o resto = produto (EAN ou SKU). Por isso vale imprimir etiquetas com o código dos endereços.
 
-### Configurar o DataWedge (uma vez, no coletor)
+### DataWedge (código de barras): configurado pelo app
 
 O **código de barras** é lido pelo **DataWedge** (app da Zebra que já vem no coletor), que "digita" o código na
-tela. O RFID é do próprio app.
+tela. O RFID é do próprio app. **Não é preciso configurar nada à mão**: ao abrir, o app cria/atualiza sozinho o
+perfil `WMS` do DataWedge pela API de Intent (`com.symbol.datawedge.api.SET_CONFIG`):
 
-**O que o app faz sozinho**: liga e desliga o leitor de código de barras do DataWedge conforme a tela (pela API
-de Intent). Em modo RFID ele desliga o scanner, senão o DataWedge "pega" o gatilho; em modo código, religa.
-Também devolve o scanner ligado quando o app vai para segundo plano.
+| No perfil `WMS` | Valor |
+|---|---|
+| App associado | `br.curso.wms` (Coletor WMS), todas as telas |
+| Barcode input | ligado (scanner automático) |
+| RFID input | desligado (se ficar ligado, o DataWedge disputa o leitor RFID com o app) |
+| Keystroke output | ligado, com **Send data** e **Send ENTER key** |
+| Intent output | desligado |
 
-**O que é feito à mão, uma vez por coletor** (o perfil do DataWedge, que diz para onde vai a leitura):
-
-1. **DataWedge** → menu ⋮ → **New profile** → nome `WMS`.
-2. **Associated apps** → ⋮ → **New app/activity** → **br.curso.wms** (Coletor WMS) → `*`.
-3. **Barcode input**: **ativado**.
-4. **RFID input**: **desativado** (se ficar ligado, o DataWedge disputa o leitor RFID com o app).
-5. **Keystroke output**: ativado → *Basic data formatting*: **Send data** e **Send ENTER key** ativados.
-   Intent output: desativado.
-6. Se aparecerem caracteres faltando, aumente o *inter character delay* do Keystroke output.
+Durante o uso, o app ainda liga e desliga o scanner conforme a tela (`SCANNER_INPUT_PLUGIN`): em modo RFID ele
+desliga o scanner, senão o DataWedge "pega" o gatilho; em modo código, religa. Ao ir para segundo plano, devolve
+o scanner ligado para os outros apps.
 
 ### Testar sem o coletor
 
