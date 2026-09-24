@@ -47,6 +47,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         quiosque = Quiosque(this)
+        abertoPeloIcone(intent)
         // Fundo branco também nas barras do Android (ícones escuros)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE
@@ -57,18 +58,22 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
+        abertoPeloIcone(intent)
+    }
+
+    /** Tocar no ícone do AppCenter (no launcher do Android) volta ao modo quiosque. */
+    private fun abertoPeloIcone(i: Intent?) {
+        if (i?.hasCategory(Intent.CATEGORY_LAUNCHER) == true && quiosque.liberado) {
+            Log.i(Quiosque.TAG, "aberto pelo ícone: quiosque de volta")
+            quiosque.travarDeNovo()
+        }
     }
 
     override fun onResume() {
         super.onResume()
         if (quiosque.liberado) {
-            // Admin saiu do quiosque neste boot: a tecla Home leva ao Android completo.
-            // Pelo ícone do AppCenter (não pela Home), o quiosque volta.
-            if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
-                quiosque.launcherPadrao()?.let { startActivity(it); return }
-            }
-            quiosque.travarDeNovo()
+            // Admin saiu do quiosque neste boot: a tela inicial é o Android completo até reiniciar
+            quiosque.launcherPadrao()?.let { startActivity(it); return }
         }
         quiosque.ativar(this)
         desenhar()
