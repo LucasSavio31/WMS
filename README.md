@@ -6,15 +6,15 @@ Controle de estoque simples com **leitor Zebra MC3390R / MC3330R** (Android, RFI
    COLETOR (Android)                          PC (servidor local)
  ┌──────────────────────┐   Wi-Fi / HTTP   ┌─────────────────────────────┐
  │ só lê e envia:       │ ───────────────► │ FastAPI (Python)            │
- │  - tags RFID (EPC)   │   JSON           │  - todas as regras (FEFO…)  │
+ │  - tags RFID (EPC)   │   JSON           │  - todas as regras          │
  │  - código de barras  │ ◄─────────────── │  - data/hora do movimento   │
  │ mostra a resposta    │                  │  - banco SQLite estoque.db  │
  └──────────────────────┘                  │  - tela web no navegador    │
                                            └─────────────────────────────┘
 ```
 
-O coletor **não tem regra nem banco de dados**: ele só envia o que leu. Quem decide o lote (FEFO),
-confere o saldo e grava a data/hora é o servidor. Por isso o relógio do coletor não precisa estar certo.
+O coletor **não tem regra nem banco de dados**: ele só envia o que leu. Quem confere a etiqueta e o saldo,
+decide o local e grava a data/hora é o servidor. Por isso o relógio do coletor não precisa estar certo.
 
 ## Componentes e tecnologias
 
@@ -129,7 +129,7 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
 | `server/app/relatorios.py` | Relatórios em PDF (estoque por local e histórico) |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
-| `server/app/static/m.html` | Telas do coletor (abre em `/m`; dentro do app ou no Chrome) |
+| `server/app/static/m.html` | Telas do coletor (abre em `/m`, dentro do app Coletor WMS) |
 | `server/wms_servidor.py` | Inicia o servidor e abre o navegador (vira o `WMS-Servidor.exe`) |
 
 ---
@@ -154,7 +154,7 @@ o navegador não faz sozinho:
 - **Rodapé**: servidor, data e hora do servidor no fim de todas as telas.
 - **RFID com o cabo USB**: o leitor da Zebra não lê enquanto carrega ("Charging in Progress"). Use o
   coletor fora do cabo; para depurar sem cabo: `adb tcpip 5555` e `adb connect <ip-do-coletor>:5555`.
-- Sem barra do Chrome; hora, Wi-Fi e bateria ficam na barra do próprio Android.
+- Tela cheia do app; hora, Wi-Fi e bateria ficam na barra do próprio Android.
 - Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
 
 Telas: Recebimento, Entrada, Baixa, Inventário, Localizar etiqueta e Config. Como as telas vêm do servidor,
@@ -228,14 +228,19 @@ cadastrado = endereço; o resto = produto (EAN ou SKU). Por isso vale imprimir e
 
 ### Configurar o DataWedge (uma vez, no coletor)
 
-O DataWedge fica só com o **código de barras**; o RFID é do app. Os nomes podem variar com a versão.
+O **código de barras** é lido pelo **DataWedge** (app da Zebra que já vem no coletor), que "digita" o código na
+tela. O RFID é do próprio app.
 
-1. **DataWedge** → menu ⋮ → **New profile** → nome `WMS` (se já criou para o Chrome, use o mesmo).
+**O que o app faz sozinho**: liga e desliga o leitor de código de barras do DataWedge conforme a tela (pela API
+de Intent). Em modo RFID ele desliga o scanner, senão o DataWedge "pega" o gatilho; em modo código, religa.
+Também devolve o scanner ligado quando o app vai para segundo plano.
+
+**O que é feito à mão, uma vez por coletor** (o perfil do DataWedge, que diz para onde vai a leitura):
+
+1. **DataWedge** → menu ⋮ → **New profile** → nome `WMS`.
 2. **Associated apps** → ⋮ → **New app/activity** → **br.curso.wms** (Coletor WMS) → `*`.
-   Se o perfil estava associado ao `com.android.chrome`, pode remover essa associação.
-3. **Barcode input**: **ativado**. Em modo 📡 RFID o próprio app desliga o leitor de código de barras do
-   DataWedge (pela API de Intent), senão o DataWedge "pega" o gatilho; em modo ▮▮ Código, religa.
-4. **RFID input**: **desativado** (se ficar ligado, o DataWedge disputa o leitor com o app).
+3. **Barcode input**: **ativado**.
+4. **RFID input**: **desativado** (se ficar ligado, o DataWedge disputa o leitor RFID com o app).
 5. **Keystroke output**: ativado → *Basic data formatting*: **Send data** e **Send ENTER key** ativados.
    Intent output: desativado.
 6. Se aparecerem caracteres faltando, aumente o *inter character delay* do Keystroke output.
@@ -295,21 +300,7 @@ adb shell am start -n br.curso.appcenter/.AbrirAppCenter
 O AppCenter desliga a tela de desbloqueio (o "deslizar"); isso só funciona se o coletor não tiver senha/PIN de tela.
 Um app que é Device Owner não pode ser desinstalado: use antes **Remover AppCenter do aparelho** na área do admin.
 
-## 3. Alternativa: só o Chrome, sem app
-
-A tela **/m** também funciona direto no Chrome do coletor, com o DataWedge "digitando" as leituras. Em alguns
-aparelhos/versões o **RFID input** do DataWedge não funciona (o gatilho só lê código de barras). Nesse caso use o app.
-
-- No perfil `WMS` do DataWedge, associe `com.android.chrome` e ative **Barcode input** e **RFID input**
-  (*Hardware trigger* e *Filter duplicate tags* ligados), além do Keystroke output com ENTER.
-- **Tela cheia**: no primeiro toque a página esconde a barra de endereços (dá para desligar em Config → Digitar endereço). Se o Chrome
-  sair da tela cheia, aparece o botão ⛶ e o próximo toque volta.
-- **Teclado virtual**: fica escondido enquanto se lê com o gatilho; abre nos campos de digitação e no ⌨.
-- **Barra de status** (em tela cheia): hora do servidor, Wi-Fi (qualidade da conexão com o servidor, pelo
-  tempo de resposta) e bateria.
-- **Abrir sem a barra do Chrome e com bateria**: no Chrome do coletor, `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
-  → coloque `http://IP-DO-PC:8000` → ative → **Relaunch**. Depois abra `/m` → ⋮ → **Instalar app**.
-  (Necessário porque o servidor usa `http://` na rede local, sem certificado.)
+## 3. Compilar os apps do coletor
 
 ### Dá para usar o VS Code?
 
@@ -339,7 +330,10 @@ e a compilação e a instalação são feitas pelo terminal. O Android Studio s�
 cd coletor
 gradlew assembleDebug
 adb install -r app\build\outputs\apk\debug\app-debug.apk
+adb install -r appcenter\build\outputs\apk\debug\appcenter-debug.apk
 ```
+
+O `gradlew assembleDebug` compila os dois apps (Coletor WMS e AppCenter).
 
 ### Arquivos
 
