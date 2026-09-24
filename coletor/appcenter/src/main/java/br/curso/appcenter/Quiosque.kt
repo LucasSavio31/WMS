@@ -69,7 +69,8 @@ class Quiosque(private val ctx: Context) {
     /** Launcher padrão do Android (o que não é o AppCenter). */
     fun launcherPadrao(): Intent? = ctx.packageManager
         .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
-        .firstOrNull { it.activityInfo.packageName != ctx.packageName }
+        .filter { it.activityInfo.packageName != ctx.packageName && !it.activityInfo.name.contains("FallbackHome") }
+        .maxByOrNull { if (it.activityInfo.packageName.contains("launcher")) 1 else 0 }   // Launcher3 do Android
         ?.let { Intent(Intent.ACTION_MAIN).setClassName(it.activityInfo.packageName, it.activityInfo.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
 
