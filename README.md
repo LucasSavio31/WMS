@@ -146,6 +146,10 @@ o navegador não faz sozinho:
 - **Teclado ⌨** (no topo): liga/desliga o teclado. O MC3300 tem teclado físico, e por isso o Gboard esconde
   as teclas; o app usa um teclado próprio na tela (numérico nos campos de quantidade). Ligado, ele abre
   ao tocar em qualquer campo; desligado, não aparece.
+- **LED verde**: pisca a cada etiqueta lida. No *Localizar etiqueta* pisca direto (estrobo), mais rápido quanto
+  mais perto da etiqueta. Quem acende o LED é o serviço RFID do sistema (`RfidServiceMgr.ledBlink()`); a opção
+  `setLedBlinkEnable` fica gravada nesse serviço e vale para todos os apps, por isso o app a religa ao conectar.
+- **Rodapé**: servidor, data e hora do servidor no fim de todas as telas.
 - **RFID com o cabo USB**: o leitor da Zebra não lê enquanto carrega ("Charging in Progress"). Use o
   coletor fora do cabo; para depurar sem cabo: `adb tcpip 5555` e `adb connect <ip-do-coletor>:5555`.
 - Sem barra do Chrome; hora, Wi-Fi e bateria ficam na barra do próprio Android.
