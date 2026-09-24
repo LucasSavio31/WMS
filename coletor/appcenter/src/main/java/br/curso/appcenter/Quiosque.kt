@@ -63,9 +63,6 @@ class Quiosque(private val ctx: Context) {
     /** O admin saiu do modo quiosque neste boot. Ao reiniciar, o número do boot muda e o quiosque volta. */
     val liberado get() = prefs.getInt("liberadoNoBoot", -1) == boot()
 
-    /** Volta ao modo quiosque (ex.: admin abriu o ícone do AppCenter). */
-    fun travarDeNovo() = prefs.edit().remove("liberadoNoBoot").apply()
-
     /** Launcher padrão do Android (o que não é o AppCenter). */
     fun launcherPadrao(): Intent? = ctx.packageManager
         .queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)

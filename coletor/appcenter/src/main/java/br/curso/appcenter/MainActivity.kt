@@ -47,26 +47,12 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         quiosque = Quiosque(this)
-        abertoPeloIcone(intent)
         // Fundo branco também nas barras do Android (ícones escuros)
         window.statusBarColor = Color.WHITE
         window.navigationBarColor = Color.WHITE
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility =
             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        abertoPeloIcone(intent)
-    }
-
-    /** Tocar no ícone do AppCenter (no launcher do Android) volta ao modo quiosque. */
-    private fun abertoPeloIcone(i: Intent?) {
-        if (i?.hasCategory(Intent.CATEGORY_LAUNCHER) == true && quiosque.liberado) {
-            Log.i(Quiosque.TAG, "aberto pelo ícone: quiosque de volta")
-            quiosque.travarDeNovo()
-        }
     }
 
     override fun onResume() {

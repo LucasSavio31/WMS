@@ -31,12 +31,7 @@
             android:excludeFromRecents="true"
             android:clearTaskOnLaunch="true"
             android:lockTaskMode="if_whitelisted"
-            android:configChanges="orientation|screenSize|keyboard|keyboardHidden">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+            android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
 
         <!-- Tela inicial (HOME) do aparelho. O admin desliga este atalho ao "Fechar AppCenter". -->
         <activity-alias
