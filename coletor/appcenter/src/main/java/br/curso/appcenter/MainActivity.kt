@@ -7,11 +7,15 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.GridLayout
@@ -55,6 +59,26 @@ class MainActivity : Activity() {
         super.onResume()
         quiosque.ativar(this)   // também religa se o admin tinha fechado e abriu o AppCenter de novo
         desenhar()
+        esconderVoltar()
+    }
+
+    override fun onWindowFocusChanged(temFoco: Boolean) {
+        super.onWindowFocusChanged(temFoco)
+        if (temFoco) esconderVoltar()
+    }
+
+    /** Esconde a barra de navegação (seta Voltar) no AppCenter; a barra de cima (hora, bateria) fica. */
+    private fun esconderVoltar() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.let {
+                it.hide(WindowInsets.Type.navigationBars())
+                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        }
     }
 
     /** Voltar não sai do AppCenter. */
@@ -145,6 +169,7 @@ class MainActivity : Activity() {
             val agora = System.currentTimeMillis()
             toques.add(agora)
             toques.removeAll { agora - it > 3000 }
+            Log.i(Quiosque.TAG, "toque ${toques.size}/5")
             if (toques.size >= 5) {
                 toques.clear()
                 pedirPin()
@@ -200,6 +225,7 @@ class MainActivity : Activity() {
             .setView(corpo)
             .setNegativeButton("Cancelar", null)
             .create()
+        d.setCanceledOnTouchOutside(false)   // só fecha no Cancelar
         conferir = {
             if (pin == Quiosque.PIN) {
                 d.dismiss()
@@ -222,7 +248,12 @@ class MainActivity : Activity() {
             }
         }
         dialogoPin = d
-        d.show()
+        try {
+            d.show()
+            Log.i(Quiosque.TAG, "PIN: popup aberto")
+        } catch (e: Throwable) {
+            Log.w(Quiosque.TAG, "PIN: não abriu (${e.message})")
+        }
     }
 
     private fun fundo(cor: Int) = GradientDrawable().apply { setColor(cor); cornerRadius = dp(8).toFloat() }
