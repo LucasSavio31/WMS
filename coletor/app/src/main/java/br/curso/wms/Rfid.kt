@@ -156,6 +156,15 @@ object Rfid : RfidEventsListener {
         r.Config.setStartTrigger(gatilho.StartTrigger)
         r.Config.setStopTrigger(gatilho.StopTrigger)
 
+        // LED verde piscando a cada leitura (fica gravado no serviço RFID do sistema e vale
+        // para todos os apps; religa sempre ao conectar, caso tenha ficado desligado)
+        try {
+            r.Config.setLedBlinkEnable(true)
+            log("LED: piscar a cada leitura ligado")
+        } catch (e: Throwable) {
+            Log.w(TAG, "LED: não ligou a piscada (${e.message})")
+        }
+
         try {
             // Antena: potência máxima e modo de RF padrão
             val config = r.Config.Antennas.getAntennaRfConfig(1)
