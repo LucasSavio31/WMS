@@ -179,6 +179,37 @@ O DataWedge fica só com o **código de barras**; o RFID é do app. Os nomes pod
 
 Abra **http://localhost:8000/m** no navegador e use o ⌨ do topo para digitar um código ou EPC.
 
+## 2b. AppCenter: modo quiosque no coletor
+
+O **AppCenter** (`AppCenter.apk`, módulo `coletor/appcenter`) é a tela inicial do coletor em modo quiosque,
+como o AppCenter dos coletores MC9090: fundo branco e só os ícones dos apps liberados (padrão: o app de estoque).
+
+- **Sem saída**: não há Home, Recentes nem barra de notificações; só os apps liberados abrem. Dentro de um app,
+  o Voltar na primeira tela volta ao AppCenter. Hora, bateria e Wi-Fi continuam visíveis.
+- **Ao ligar o coletor** abre direto no AppCenter, travado, sem tela de desbloqueio, qualquer que tenha sido o
+  último estado.
+- **Administrador**: 5 toques na tela (em até 3 s) → PIN **1234** (teclado numérico na tela ou o teclado físico).
+  - marcar/desmarcar os **aplicativos** que aparecem no AppCenter;
+  - **← Sair do admin**: volta à tela inicial do AppCenter;
+  - **Sair do modo quiosque**: libera o Android completo. O quiosque volta ao reiniciar o coletor ou ao tocar
+    no ícone **AppCenter** no launcher do Android;
+  - **Remover AppCenter do aparelho**: desfaz o quiosque de vez (para poder desinstalar).
+
+### Instalar (uma vez, com o cabo e o ADB)
+
+O quiosque de verdade usa o modo *lock task* do Android, que exige que o AppCenter seja o **Device Owner**
+(administrador do aparelho). O Android só aceita isso **sem nenhuma conta** no aparelho: remova as contas
+(Configurações → Contas) antes; depois de ativado, dá para adicionar de novo.
+
+```
+adb install -r AppCenter.apk
+adb shell dpm set-device-owner br.curso.appcenter/.AdminReceiver
+adb shell am start -n br.curso.appcenter/.AbrirAppCenter
+```
+
+O AppCenter desliga a tela de desbloqueio (o "deslizar"); isso só funciona se o coletor não tiver senha/PIN de tela.
+Um app que é Device Owner não pode ser desinstalado: use antes **Remover AppCenter do aparelho** na área do admin.
+
 ## 3. Alternativa: só o Chrome, sem app
 
 A tela **/m** também funciona direto no Chrome do coletor, com o DataWedge "digitando" as leituras. Em alguns
