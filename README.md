@@ -33,7 +33,14 @@ Os três arquivos prontos (`WMS-Servidor.exe`, `ColetorWMS.apk` e `AppCenter.apk
 
 ## Jeito fácil: baixar pronto
 
-Na página **Releases** do repositório (lado direito, "Releases" → última versão), baixe:
+Os programas prontos estão na pasta **[`downloads/`](downloads/)** deste repositório (e também na página
+**Releases**, lado direito → última versão):
+
+- [**WMS-Servidor.exe**](downloads/WMS-Servidor.exe): servidor + telas, para o PC com Windows
+- [**ColetorWMS.apk**](downloads/ColetorWMS.apk): app de estoque do coletor
+- [**AppCenter.apk**](downloads/AppCenter.apk): tela inicial em modo quiosque do coletor
+
+No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direita).
 
 | Arquivo | Onde | Como usar |
 |---|---|---|
@@ -72,14 +79,9 @@ outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* 
 *Estoque* → marcar → **Mover** (só no PC; as etiquetas RFID vão junto e o movimento fica no histórico como
 TRANSFERENCIA). No coletor fica só a baixa, escolhendo o local de onde os itens saem.
 
-**FEFO** (*First Expired, First Out*): na baixa por quantidade e nos pedidos, o servidor tira primeiro do lote
-que vence antes. Ficam de fora: lotes **vencidos** (a não ser que o motivo da baixa seja `VENCIMENTO`),
-lotes **bloqueados**, unidades **com etiqueta RFID** (só saem lendo a tag) e o que já está **reservado** para pedidos.
-Na baixa por RFID, a tag já indica o lote. Se existir outro lote que vence antes, o servidor devolve um aviso.
-
-**Fluxo de saída para cliente**: criar o pedido → *Liberar para separação* (o sistema reserva os lotes por FEFO e
-monta a lista de separação em ordem de endereço) → separar e conferir cada linha → *Confirmar expedição* (baixa com
-motivo VENDA e o número do pedido como documento). Cancelar devolve a reserva.
+**Baixa por quantidade** (produto sem etiqueta): o servidor tira do local escolhido, primeiro das unidades
+**sem etiqueta** e depois, se precisar, escolhe etiquetas e as marca como baixadas. Na baixa por RFID, a própria
+etiqueta diz qual unidade sai.
 
 **Ordem de recebimento (pré-recebimento)**: no PC, *Ordens de recebimento* → produtos e quantidade esperada. No
 coletor, *Recebimento* → escolhe a ordem → toca no item (ou bipa o código de barras do produto) → aperta o gatilho
@@ -87,9 +89,10 @@ nas etiquetas. Cada etiqueta é gravada na hora e aparece no PC. O sistema recus
 outra ordem e item que já completou a quantidade. *Finalizar* (no PC ou no coletor) dá entrada de tudo que foi lido
 no Local-01 e mostra as divergências. As ordens fechadas ficam listadas em acordeão (clique para abrir).
 
-**Inventário**: cada contagem (do PC ou do coletor) é gravada. A tela mostra, lote a lote,
-*Sistema × Contado × Diferença*. Ao **fechar**, o saldo do sistema passa a ser o contado
-(lote não contado fica com zero), e cada ajuste fica registrado nos movimentos.
+**Inventário**: inicia no coletor e lê as etiquetas; cada leitura vai na hora para o servidor. O PC mostra
+*Em estoque × Lidas × Diferença* e a acuracidade, e a lista de etiquetas: as que faltam em vermelho e as que
+sobram (etiqueta desconhecida pode ser incluída no estoque). Ao **fechar**, etiqueta não lida sai do estoque e
+etiqueta achada volta; cada ajuste fica registrado nos movimentos.
 
 **Excluir produto** apaga também os lotes, as tags, os movimentos, as contagens e os itens de pedido dele.
 Para só parar de usar, desmarque *Ativo*.
@@ -122,7 +125,7 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 | Arquivo | O que tem |
 |---|---|
 | `server/app/db.py` | Tabelas do banco e migração automática de bancos antigos |
-| `server/app/estoque.py` | **Regras**: entrada, baixa FEFO, baixa por tag, endereços, bloqueio, pedidos, inventário |
+| `server/app/estoque.py` | **Regras**: entrada, baixa (por etiqueta e por quantidade), locais e mover itens, inventário, ordens de recebimento |
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
 | `server/app/relatorios.py` | Relatórios em PDF (estoque por local e histórico) |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
@@ -243,19 +246,39 @@ Abra **http://localhost:8000/m** no navegador e use o ⌨ do topo para digitar u
 
 ## 2b. AppCenter: modo quiosque no coletor
 
-O **AppCenter** (`AppCenter.apk`, módulo `coletor/appcenter`) é a tela inicial do coletor em modo quiosque,
-como o AppCenter dos coletores MC9090: fundo branco e só os ícones dos apps liberados (padrão: o app de estoque).
+O **AppCenter** (`AppCenter.apk`, código em `coletor/appcenter`) é a **tela inicial do coletor em modo quiosque**,
+como o AppCenter dos coletores Zebra MC9090: fundo branco e só os ícones dos apps que o operador pode usar
+(por padrão, o app de estoque). É um app separado do WMS: pode ser instalado ou atualizado sem mexer no outro.
 
-- **Sem saída**: não há Home, Recentes nem barra de notificações; só os apps liberados abrem. Dentro de um app,
-  o Voltar na primeira tela volta ao AppCenter. Hora, bateria e Wi-Fi continuam visíveis.
-- **Ao ligar o coletor** abre direto no AppCenter, travado, sem tela de desbloqueio, qualquer que tenha sido o
-  último estado.
-- **Administrador**: 5 toques na tela (em até 3 s) → PIN **1234** (teclado numérico na tela ou o teclado físico).
-  - marcar/desmarcar os **aplicativos** que aparecem no AppCenter;
-  - **← Sair do admin**: volta à tela inicial do AppCenter;
-  - **Sair do modo quiosque**: libera o Android completo. O quiosque volta ao reiniciar o coletor ou ao tocar
-    no ícone **AppCenter** no launcher do Android;
-  - **Remover AppCenter do aparelho**: desfaz o quiosque de vez (para poder desinstalar).
+### Por que ele é importante
+
+- **O coletor vira uma ferramenta de trabalho, não um celular**: o operador só vê e só abre o que precisa.
+  Nada de Configurações, Play Store, câmera, navegador ou jogos.
+- **Menos erro e menos suporte**: sem acesso ao Android, ninguém muda Wi-Fi, idioma, data ou configurações do
+  DataWedge/RFID por engano, nem desinstala o app de estoque.
+- **Segurança e padronização**: todos os coletores da operação ficam iguais, e só o administrador (com PIN)
+  mexe no aparelho.
+- **Pronto para usar ao ligar**: o coletor liga direto no AppCenter, sem tela de desbloqueio, qualquer que tenha
+  sido o último estado (mesmo que o administrador tenha liberado o Android antes de desligar).
+
+### Recursos
+
+| Recurso | Como funciona |
+|---|---|
+| **Só os apps liberados** | Tela branca com a grade de ícones dos apps permitidos. Tocar abre o app; o Voltar na primeira tela do app volta ao AppCenter. |
+| **Travamento de verdade** | Modo *lock task* do Android: sem Home, sem Recentes, sem barra de notificações e sem a seta Voltar na tela do AppCenter. Um app fora da lista não abre nem por atalho. Hora, bateria e Wi-Fi continuam visíveis, e o menu de desligar funciona. |
+| **Área do administrador** | **5 toques** na tela (em até 3 s) abrem o popup do **PIN 1234**, com teclado numérico na tela (o teclado físico também digita). Cancelar fecha o popup. |
+| **Escolher os apps** | Na área do administrador, a lista de todos os apps instalados com caixinhas: marcar/desmarcar define o que aparece no AppCenter (e o que pode abrir). |
+| **← Sair do admin** | Volta à tela inicial do AppCenter (deslogar). |
+| **Sair do modo quiosque** | Libera o Android completo para o administrador (a Home leva ao launcher normal). O quiosque volta ao **reiniciar** o coletor ou ao tocar no ícone **AppCenter** no launcher do Android. |
+| **Liga direto no AppCenter** | Ele é a tela inicial fixa do aparelho e desliga a tela de desbloqueio (o "deslizar"). |
+| **Remover AppCenter do aparelho** | Desfaz o quiosque de vez (deixa de ser administrador do aparelho) para poder desinstalar. |
+
+**Como é feito**: o AppCenter é o **Device Owner** do coletor (`DevicePolicyManager`). Com isso ele define a lista
+de apps permitidos (`setLockTaskPackages`), liga o modo quiosque (`startLockTask`), fixa a tela inicial
+(`addPersistentPreferredActivity`) e desliga a tela de desbloqueio (`setKeyguardDisabled`). "Sair do modo
+quiosque" grava o número do boot atual (`Settings.Global.BOOT_COUNT`): quando o coletor reinicia, o número muda
+e o quiosque volta sozinho, sem depender do aviso de boot do Android (que no MC3300 chega uns 40 s depois).
 
 ### Instalar (uma vez, com o cabo e o ADB)
 
@@ -279,7 +302,7 @@ aparelhos/versões o **RFID input** do DataWedge não funciona (o gatilho só l�
 
 - No perfil `WMS` do DataWedge, associe `com.android.chrome` e ative **Barcode input** e **RFID input**
   (*Hardware trigger* e *Filter duplicate tags* ligados), além do Keystroke output com ENTER.
-- **Tela cheia**: no primeiro toque a página esconde a barra de endereços (dá para desligar no ⚙). Se o Chrome
+- **Tela cheia**: no primeiro toque a página esconde a barra de endereços (dá para desligar em Config → Digitar endereço). Se o Chrome
   sair da tela cheia, aparece o botão ⛶ e o próximo toque volta.
 - **Teclado virtual**: fica escondido enquanto se lê com o gatilho; abre nos campos de digitação e no ⌨.
 - **Barra de status** (em tela cheia): hora do servidor, Wi-Fi (qualidade da conexão com o servidor, pelo
@@ -348,5 +371,6 @@ adb install -r app\build\outputs\apk\debug\app-debug.apk
 ## Simplificações (de propósito, por ser didático)
 
 - Sem login nem senha, e sem HTTPS: é para uso em rede local.
-- Endereçamento por lote: o lote inteiro fica em um endereço (a transferência move o lote todo).
+- Sem lote e sem validade nas telas: cada item fica em um local, e **Mover** leva toda a quantidade do item
+  naquele local para o outro.
 - Se a rede cair, o coletor mostra o erro e o operador envia de novo. Não existe fila offline.

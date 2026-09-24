@@ -5,5 +5,5 @@ __pycache__/
 build/
 local.properties
 
-# Programas gerados (WMS-Servidor.exe, ColetorWMS.apk): ficam na página Releases do GitHub
+# Saída local dos builds. Os programas prontos para baixar ficam em downloads/ e na página Releases
 /dist/
