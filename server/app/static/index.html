@@ -165,6 +165,15 @@
   .lista-simples { list-style: none; padding: 0; margin: 0; }
   .lista-simples li { padding: 8px 0; border-bottom: 1px solid var(--borda); display: flex; gap: 8px; align-items: center; }
   .lista-simples li:last-child { border-bottom: none; }
+  /* Ordens fechadas: acordeão */
+  details.acordeao { padding: 0; }
+  details.acordeao > summary { list-style: none; cursor: pointer; padding: 14px 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  details.acordeao > summary::-webkit-details-marker { display: none; }
+  details.acordeao > summary::before { content: "▸"; color: var(--texto-2); transition: transform .15s; }
+  details.acordeao[open] > summary::before { transform: rotate(90deg); }
+  details.acordeao > summary .datas { flex-basis: 100%; padding-left: 18px; }
+  details.acordeao > summary:hover { background: var(--painel-2); border-radius: var(--raio); }
+  details.acordeao .corpo { padding: 0 18px 16px; }
   .item-lista { cursor: pointer; border-radius: 7px; padding: 8px 10px !important; }
   .item-lista:hover, .item-lista.ativo { background: var(--fundo-info); }
 
@@ -307,15 +316,15 @@
               </form>
             </div>
             <div class="card">
-              <div class="card-titulo">Ordens
-                <span class="acoes"><select id="orFiltro" style="width:auto">
-                  <option value="ABERTO">Abertas</option><option value="">Todas</option>
-                  <option value="FINALIZADO">Finalizadas</option><option value="CANCELADO">Canceladas</option>
-                </select></span></div>
+              <div class="card-titulo">Ordens abertas</div>
               <ul class="lista-simples" id="listaOrdens"></ul>
             </div>
           </div>
-          <div class="card" id="ordemDetalhe"><p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p></div>
+          <div>
+            <div class="card" id="ordemDetalhe"><p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p></div>
+            <h3 style="margin:18px 0 8px;font-size:15px" id="tituloFechadas" hidden>Ordens fechadas</h3>
+            <div id="ordensFechadas"></div>
+          </div>
         </div>
       </section>
 
@@ -1108,7 +1117,6 @@ aoEnviar($("formOrdem"), async () => {
 $("formOrdem").addEventListener("reset", () => setTimeout(() => {
   itensNovaOrdem = []; desenharItensOrdem(); $("orProduto").focus();
 }));
-$("orFiltro").addEventListener("change", desenharListaOrdens);
 
 async function carregarOrdens() {
   ordens = await api("GET", "/api/recebimentos");
@@ -1118,14 +1126,38 @@ async function carregarOrdens() {
 }
 const barra = (lidas, prevista) => `<div class="progresso ${lidas >= prevista ? "completo" : ""}"><span style="width:${Math.min(100, prevista ? (100 * lidas) / prevista : 0)}%"></span></div>`;
 function desenharListaOrdens() {
-  const f = $("orFiltro").value;
-  const lista = ordens.filter((o) => !f || o.status === f);
+  const lista = ordens.filter((o) => o.status === "ABERTO");
   $("listaOrdens").innerHTML = lista.map((o) => `<li class="item-lista ${o.id === ordemAtual ? "ativo" : ""}" onclick="carregarOrdem(${o.id})" style="display:block">
       <div style="display:flex;gap:8px;align-items:center"><b>${esc(o.numero)}</b>${o.documento ? " · " + esc(o.documento) : ""}
         <span style="margin-left:auto">${seloStatus(o.status === "ABERTO" ? "ABERTO" : o.status === "FINALIZADO" ? "FECHADO" : o.status)}</span></div>
       <div class="fraco">${dataHoraBR(o.criado_em).slice(0, 16)} · ${o.itens} item(ns) · ${num(o.lidas)} de ${num(o.prevista)}</div>
       ${o.status === "ABERTO" ? barra(o.lidas, o.prevista) : ""}</li>`).join("")
-    || `<li class="vazio">Nenhuma ordem ${f === "ABERTO" ? "aberta" : ""}</li>`;
+    || `<li class="vazio">Nenhuma ordem aberta</li>`;
+  desenharFechadas();
+}
+// Ordens fechadas (finalizadas e canceladas): acordeões fechados, a mais nova em cima; clicar abre.
+let chaveFechadas = "";
+function desenharFechadas() {
+  const fechadas = ordens.filter((o) => o.status !== "ABERTO");
+  const chave = fechadas.map((o) => o.id + o.status).join(",");
+  if (chave === chaveFechadas) return;   // nada mudou: não fecha o que o usuário abriu
+  chaveFechadas = chave;
+  const abertos = new Set([...document.querySelectorAll("#ordensFechadas details[open]")].map((d) => d.dataset.id));
+  $("tituloFechadas").hidden = !fechadas.length;
+  $("ordensFechadas").innerHTML = fechadas.map((o) => `<details class="card acordeao" data-id="${o.id}">
+      <summary><span class="cod" style="font-size:16px">Ordem ${esc(o.numero)}</span> ${seloStatus(o.status === "FINALIZADO" ? "FECHADO" : o.status)}
+        <span class="fraco" style="margin-left:auto">${num(o.lidas)} de ${num(o.prevista)} · ${o.itens} item(ns)</span>
+        <span class="fraco datas">Criada ${dataHoraBR(o.criado_em)}${o.finalizado_em ? " · encerrada " + dataHoraBR(o.finalizado_em) : ""}</span></summary>
+      <div class="corpo"><p class="fraco">Carregando…</p></div></details>`).join("");
+  $("ordensFechadas").querySelectorAll("details").forEach((d) => {
+    d.addEventListener("toggle", async () => {
+      if (!d.open || d.dataset.carregado) return;
+      d.dataset.carregado = "1";
+      try { d.querySelector(".corpo").innerHTML = corpoOrdem(await api("GET", "/api/recebimentos/" + d.dataset.id), new Set()); }
+      catch (e) { d.dataset.carregado = ""; d.querySelector(".corpo").textContent = e.message; }
+    });
+    if (abertos.has(d.dataset.id)) d.open = true;
+  });
 }
 async function carregarOrdem(id) {
   if (id !== ordemAtual) leiturasVistas = null;
@@ -1135,7 +1167,11 @@ async function carregarOrdem(id) {
   try { d = await api("GET", "/api/recebimentos/" + id); }
   catch { ordemAtual = null; $("ordemDetalhe").innerHTML = '<p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p>'; return; }
   const r = d.recebimento, aberto = r.status === "ABERTO";
-  const total = d.itens.reduce((s, i) => s + i.prevista, 0), lidas = d.itens.reduce((s, i) => s + i.lidas, 0);
+  if (!aberto) {   // fechada: vai para o acordeão "Ordens fechadas"
+    ordemAtual = null; desenharListaOrdens();
+    $("ordemDetalhe").innerHTML = '<p class="vazio">Escolha uma ordem na lista ou crie uma nova.</p>';
+    return;
+  }
   const novas = new Set(leiturasVistas ? d.leituras.filter((l) => !leiturasVistas.has(l.id)).map((l) => l.id) : []);
   leiturasVistas = new Set(d.leituras.map((l) => l.id));
   $("ordemDetalhe").innerHTML = `
@@ -1144,6 +1180,13 @@ async function carregarOrdem(id) {
         ${aberto ? `<button class="sucesso" onclick="finalizarOrdem(this)">Finalizar e dar entrada</button><button onclick="cancelarOrdem(this)">Cancelar ordem</button>` : ""}
       </span></div>
     <p style="margin:0 0 12px"><span class="fraco">Criada ${dataHoraBR(r.criado_em)}${r.finalizado_em ? " · encerrada " + dataHoraBR(r.finalizado_em) : ""}</span></p>
+    ${corpoOrdem(d, novas)}`;
+}
+/** Resumo, itens e leituras de uma ordem (detalhe da aberta e acordeão das fechadas). */
+function corpoOrdem(d, novas) {
+  const aberto = d.recebimento.status === "ABERTO";
+  const total = d.itens.reduce((s, i) => s + i.prevista, 0), lidas = d.itens.reduce((s, i) => s + i.lidas, 0);
+  return `
     <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
       <div class="kpi"><div class="rotulo">Esperado</div><div class="valor">${num(total)}</div></div>
       <div class="kpi ${lidas >= total ? "sucesso" : "alerta"}"><div class="rotulo">Recebido</div><div class="valor">${num(lidas)}</div></div>
@@ -1167,7 +1210,7 @@ async function removerLeituraOrdem(id, botao) {
 }
 async function finalizarOrdem(botao) {
   const d = await api("GET", "/api/recebimentos/" + ordemAtual);
-  const faltas = d.itens.filter((i) => i.lidas !== i.prevista).map((i) => `• ${i.sku} lote ${i.lote}: ${num(i.lidas)} de ${num(i.prevista)}`);
+  const faltas = d.itens.filter((i) => i.lidas !== i.prevista).map((i) => `• ${i.sku}: ${num(i.lidas)} de ${num(i.prevista)}`);
   const texto = `Dar entrada no estoque de tudo que foi lido na ordem ${d.recebimento.numero}?` +
     (faltas.length ? `\n\nATENÇÃO, divergências:\n${faltas.join("\n")}\n\nSó entra o que foi lido.` : "");
   if (!(await confirmar("Finalizar recebimento", texto, "Finalizar", "sucesso"))) return;
