@@ -22,7 +22,8 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Tela do AppCenter. lockTaskMode: entra sozinho no modo quiosque quando liberado. -->
+        <!-- Tela do AppCenter. O modo quiosque é ligado pelo código (startLockTask), só quando deve:
+             lockTaskMode="if_whitelisted" travaria sozinho até depois de o admin sair do quiosque. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -30,7 +31,6 @@
             android:stateNotNeeded="true"
             android:excludeFromRecents="true"
             android:clearTaskOnLaunch="true"
-            android:lockTaskMode="if_whitelisted"
             android:configChanges="orientation|screenSize|keyboard|keyboardHidden" />
 
         <!-- Tela inicial (HOME) do aparelho. O admin desliga este atalho ao "Fechar AppCenter". -->
