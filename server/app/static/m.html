@@ -81,6 +81,17 @@
   .captura { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; overflow: hidden; }
   header #modo, header #teclado { width: 34px; font-size: 18px; border-radius: 8px; }
   .potencia { margin: 8px 0 4px; }
+  /* PIN da Config: igual ao do AppCenter (fundo branco, visor com bolinhas, teclado 3x4) */
+  dialog.pin { background: #fff; color: #17202b; border: 0; border-radius: 6px; padding: 22px 22px 10px; width: min(400px, 92vw); }
+  dialog.pin h3 { font-size: 22px; font-weight: 500; margin: 0 0 18px; color: #17202b; }
+  dialog.pin .pin-visor { text-align: center; font-size: 28px; letter-spacing: 8px; min-height: 40px; color: #17202b; }
+  dialog.pin .pin-teclado { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 22px; margin: 14px 12px 6px; }
+  dialog.pin .pin-teclado button { height: 64px; border: 0; border-radius: 4px; background: #d6d8da; color: #17202b; font-size: 24px;
+                                   box-shadow: 0 1px 2px #0003; }
+  dialog.pin .pin-teclado button:active { background: #bfc2c5; }
+  dialog.pin .pin-teclado button.ok { background: #1f6feb; color: #fff; border-radius: 8px; }
+  dialog.pin .pin-rodape { text-align: right; }
+  dialog.pin .pin-rodape button { background: none; border: 0; color: #00897b; font-size: 16px; font-weight: 600; padding: 12px 8px; letter-spacing: .5px; }
   /* Consulta: etiquetas de cada item (abre com um toque) */
   details.etiquetas summary { cursor: pointer; color: var(--primaria); font-size: 14px; margin-top: 4px; }
   details.etiquetas ul { margin: 6px 0 0; padding-left: 18px; }
@@ -216,11 +227,17 @@
 </form></dialog>
 
 <!-- Config protegida por senha -->
-<dialog id="dlgSenha"><form method="dialog" id="formSenha">
-  <h3>Senha da Config</h3>
-  <input id="edSenha" type="password" inputmode="numeric" autocomplete="off" enterkeyhint="done" placeholder="Senha">
-  <div class="botoes"><button class="b" type="button" id="senhaCancelar">Cancelar</button><button class="b primario" type="submit">OK</button></div>
-</form></dialog>
+<dialog id="dlgSenha" class="pin">
+  <h3>PIN do administrador</h3>
+  <div class="pin-visor" id="pinVisor">—</div>
+  <div class="pin-teclado" id="pinTeclado">
+    <button type="button">1</button><button type="button">2</button><button type="button">3</button>
+    <button type="button">4</button><button type="button">5</button><button type="button">6</button>
+    <button type="button">7</button><button type="button">8</button><button type="button">9</button>
+    <button type="button" data-t="apagar">⌫</button><button type="button">0</button><button type="button" data-t="ok" class="ok">OK</button>
+  </div>
+  <div class="pin-rodape"><button type="button" id="senhaCancelar">CANCELAR</button></div>
+</dialog>
 
 <!-- Botão ⚙: configuração do servidor -->
 <dialog id="dlgServidor"><form method="dialog" id="formServidor">
@@ -261,7 +278,7 @@ async function api(metodo, url, corpo) {
 // ---- retorno para o operador: mensagem, bipe e vibração
 // Configurações do coletor (tela Config), guardadas no próprio aparelho
 // Potência da antena (%) por tipo de tela: Recebimento (ordem e entrada), Baixa e Localizar
-const cfg = { volume: 100, potRecebimento: 100, potBaixa: 100, potLocalizar: 100, localBaixa: null };
+const cfg = { volume: 100, potRecebimento: 100, potBaixa: 100, potLocalizar: 100, potGravar: 30, localBaixa: null };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem("coletor.cfg") || "{}")); } catch {}
 const POTENCIA_DA_TELA = { entrada: "potRecebimento", avulsa: "potRecebimento", baixa: "potBaixa", localizar: "potLocalizar" };
 const potenciaDaTela = (nome) => cfg[POTENCIA_DA_TELA[nome]] || 100;   // outras telas (inventário): 100%
@@ -771,7 +788,7 @@ telas.menu = {
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
       ${item("consulta", "🔍", "Consulta<br><small class=fraco>estoque por local</small>")}${item("localizar", "🎯", "Localizar etiqueta")}
-      ${item("config", "⚙️", "Config")}
+      ${item("gravar", "📝", "Gravar<br><small class=fraco>regravar etiqueta</small>")}${item("config", "⚙️", "Config")}
     </div>`;
     try {
       const r = await api("GET", "/api/resumo");
@@ -1343,22 +1360,109 @@ telas.consulta = {
   codigo() {},
 };
 
+// ======================================================================= GRAVAR
+// Regrava o EPC de uma etiqueta: o código (bipado ou digitado) vira o novo EPC.
+telas.gravar = {
+  titulo: "Gravar etiqueta",
+  gatilho: "barras",   // nesta tela o gatilho lê código de barras
+  abrir() {
+    tela.innerHTML = `<div class="card">
+        <label class="campo"><span>Código a gravar na etiqueta</span>
+          <input id="grCodigo" class="mono" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                 enterkeyhint="done" data-enter="previa" placeholder="Bipe o código de barras ou digite"></label>
+        <div class="fraco" id="grPrevia" style="margin-top:6px"></div></div>
+      <div class="card"><p class="fraco" style="margin:0 0 8px">Encoste o coletor na etiqueta (só ela perto) e toque em
+          <b>Gravar</b>. O código substitui o EPC da etiqueta.</p>
+        <div class="botoes"><button class="b" data-acao="limpar">Limpar</button>
+          <button class="b primario" data-acao="gravar" id="grBotao">📝 Gravar</button></div></div>
+      <div id="grResultado"></div>`;
+    const c = $("grCodigo");
+    c.addEventListener("focus", () => definirGatilho("barras"));   // cursor no campo: gatilho lê código de barras
+    c.addEventListener("input", () => this.previa());
+    this.previa();
+  },
+  texto() { return ($("grCodigo")?.value || "").trim().toUpperCase(); },
+  previa() {
+    const v = this.texto(), el = $("grPrevia");
+    if (!el) return;
+    if (!v) { el.textContent = "O EPC tem 24 dígitos; código menor é completado com 0 à esquerda."; return; }
+    if (!/^[0-9A-F]+$/.test(v)) { el.innerHTML = '<b style="color:var(--alerta)">Só números e letras de A a F</b>'; return; }
+    if (v.length > 24) { el.innerHTML = '<b style="color:var(--alerta)">No máximo 24 caracteres</b>'; return; }
+    const exato = v.padStart(Math.ceil(v.length / 4) * 4, "0");
+    el.innerHTML = `Vai gravar: <b class="mono">${esc(exato)}</b> (${exato.length} dígitos)` +
+      (exato.length < 24 ? `<br>Se a etiqueta não aceitar menos dígitos: <span class="mono">${esc(v.padStart(24, "0"))}</span>` : "");
+  },
+  /** Código de barras (com o campo focado ou não): fica fixado no campo, substituindo o anterior. */
+  codigo(d) {
+    const c = $("grCodigo");
+    if (!c) return;
+    c.value = d; c.dataset.antes = d;
+    bipe("ok");
+    this.previa();
+  },
+  rfid(d) { this.codigo(d); },   // código de barras hexadecimal comprido parece EPC: trata igual
+  limpar() {
+    $("grCodigo").value = ""; $("grCodigo").dataset.antes = "";
+    $("grResultado").innerHTML = "";
+    this.previa();
+  },
+  gravar(b) {
+    const v = this.texto();
+    if (!v) return msg("Bipe ou digite o código", "info");
+    if (!/^[0-9A-F]{1,24}$/.test(v)) return msg("O código tem que ter até 24 caracteres, só números e letras de A a F", "info");
+    if (!app?.gravarEtiqueta) return msg("A gravação só funciona no app do coletor (atualize o ColetorWMS.apk)", "info");
+    this.botao = b; b.disabled = true; b.textContent = "Gravando…";
+    $("grResultado").innerHTML = "";
+    msg("Gravando: mantenha o coletor encostado na etiqueta", "info", false);
+    try { app.gravarEtiqueta(v, cfg.potGravar || 30); } catch (e) { this.fim(); msg(e.message, "info"); }
+  },
+  fim() { if (this.botao) { this.botao.disabled = false; this.botao.textContent = "📝 Gravar"; } },
+  async resultado(r) {
+    this.fim();
+    if (!r.ok) { bipe("alerta"); msg(r.mensagem, "info", false); return; }
+    bipe("ok");
+    let cadastro = "";
+    try {
+      const s = await api("POST", "/api/tags/regravar", { antigo: r.antigo, novo: r.novo });
+      if (s.atualizado) cadastro = `<div class="fraco" style="margin-top:6px">Cadastro atualizado: ${esc(s.sku)} agora usa o EPC novo.</div>`;
+    } catch (e) { cadastro = `<div class="fraco" style="margin-top:6px">${esc(e.message)}</div>`; }
+    if (telaAtual !== "gravar") return;
+    $("grResultado").innerHTML = `<div class="card"><h2>✓ Etiqueta gravada</h2>
+        <div class="fraco">Antes</div><div class="mono">${esc(r.antigo)}</div>
+        <div class="fraco" style="margin-top:6px">Agora</div><div class="mono"><b>${esc(r.novo)}</b></div>${cadastro}</div>`;
+    msg("✓ Etiqueta gravada", "ok", false);
+  },
+};
+window.resultadoGravacao = (json) => { try { telas.gravar.resultado(JSON.parse(json)); } catch {} };
+
+// PIN da Config: popup igual ao do AppCenter (teclado numérico próprio; o teclado físico também digita)
+let pin = "";
+function mostrarPin() { $("pinVisor").textContent = pin ? "•".repeat(pin.length) : "—"; }
 function pedirSenhaConfig() {
-  $("edSenha").value = "";
-  $("dlgSenha").showModal();
-  $("edSenha").focus();
-  abrirTecladoTela($("edSenha"));   // teclado numérico na tela (o Gboard não aparece no MC3300)
+  pin = ""; mostrarPin();
+  if (!$("dlgSenha").open) $("dlgSenha").showModal();
 }
-$("formSenha").addEventListener("submit", (ev) => {
+function teclaPin(t) {
+  if (t === "apagar") pin = pin.slice(0, -1);
+  else if (t === "ok") {
+    if (pin === SENHA_CONFIG) { $("dlgSenha").close(); configLiberada = true; telas.config.abrir(); return; }
+    pin = ""; msg("PIN incorreto", "info");
+  } else if (pin.length < 8) pin += t;
+  mostrarPin();
+}
+$("pinTeclado").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button");
+  if (b) teclaPin(b.dataset.t || b.textContent.trim());
+});
+$("dlgSenha").addEventListener("keydown", (ev) => {
+  if (/^[0-9]$/.test(ev.key)) teclaPin(ev.key);
+  else if (ev.key === "Backspace") teclaPin("apagar");
+  else if (ev.key === "Enter") teclaPin("ok");
+  else return;
   ev.preventDefault();
-  const ok = $("edSenha").value === SENHA_CONFIG;
-  $("dlgSenha").close();
-  if (ok) { configLiberada = true; telas.config.abrir(); }
-  else { msg("Senha incorreta", "info"); location.hash = "menu"; }
 });
 $("senhaCancelar").addEventListener("click", () => { $("dlgSenha").close(); location.hash = "menu"; });
 $("dlgSenha").addEventListener("cancel", (ev) => { ev.preventDefault(); $("dlgSenha").close(); location.hash = "menu"; });
-$("dlgSenha").addEventListener("close", () => { if (kb.alvo === $("edSenha")) fecharTecladoTela(); });
 
 telas.config = {
   titulo: "Config",
@@ -1371,7 +1475,7 @@ telas.config = {
         <div class="botoes" style="margin-top:8px"><button class="b" data-acao="testar">🔊 Testar bipe</button></div>
         ${app ? '<p class="fraco" style="margin:6px 0 0">Muda o volume de mídia do coletor.</p>' : ""}</div>
       <div class="card"><h2>Potência da antena RFID</h2>
-        ${[["potRecebimento", "Recebimento e entrada"], ["potBaixa", "Baixa"], ["potLocalizar", "Localizar etiqueta"]].map(([k, nome]) => `
+        ${[["potRecebimento", "Recebimento e entrada"], ["potBaixa", "Baixa"], ["potLocalizar", "Localizar etiqueta"], ["potGravar", "Gravar etiqueta"]].map(([k, nome]) => `
           <div class="potencia"><div>${nome} <span class="dir"><b id="${k}Txt">${cfg[k]}%</b></span></div>
             <input type="range" data-pot="${k}" min="10" max="100" step="10" value="${cfg[k]}" style="padding:0"></div>`).join("")}
         <p class="fraco" style="margin:6px 0 0">100% lê mais longe. Menos potência lê só o que está perto (evita pegar mercadoria vizinha).</p></div>

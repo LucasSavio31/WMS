@@ -173,6 +173,10 @@ class MainActivity : Activity() {
         Rfid.aoAvisar = { msg -> chamarTela("statusRfid", msg) }
         Rfid.aoTerminarLeitura = { n -> chamarTela("fimLeituraRfid", n.toString()) }
         Rfid.aoLocalizar = { distancia -> chamarTela("proximidadeRfid", distancia.toString()) }
+        Rfid.aoGravar = { ok, mensagem, antigo, novo ->
+            chamarTela("resultadoGravacao", JSONObject()
+                .put("ok", ok).put("mensagem", mensagem).put("antigo", antigo).put("novo", novo).toString())
+        }
         Rfid.conectar(applicationContext) { msg -> chamarTela("statusRfid", msg) }
     }
 
@@ -190,6 +194,7 @@ class MainActivity : Activity() {
         Rfid.aoAvisar = null
         Rfid.aoTerminarLeitura = null
         Rfid.aoLocalizar = null
+        Rfid.aoGravar = null
         Rfid.definirAlvo(null)
         Rfid.desconectar()
         leitorDataWedge(true)   // devolve o leitor de código de barras para os outros apps
@@ -269,6 +274,10 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun potencia(percentual: Int) = Rfid.potencia(percentual)
+
+        /** Grava o texto (hexadecimal) como EPC da etiqueta perto da antena; resposta em resultadoGravacao(json). */
+        @JavascriptInterface
+        fun gravarEtiqueta(texto: String, potencia: Int) = Rfid.gravar(texto, potencia)
 
         @JavascriptInterface
         fun rfidConectado(): Boolean = Rfid.conectado

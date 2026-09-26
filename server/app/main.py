@@ -405,6 +405,17 @@ def listar_tags(status: Optional[str] = None, endereco_id: Optional[int] = None,
         (*args, min(max(limite, 1), 5000))))
 
 
+class Regravacao(BaseModel):
+    antigo: str
+    novo: str
+
+
+@app.post("/api/tags/regravar")
+def regravar_tag(r: Regravacao, con: Con = Depends(conexao)):
+    """Etiqueta regravada no coletor: o cadastro passa a usar o EPC novo."""
+    return estoque.regravar_tag(con, r.antigo, r.novo)
+
+
 @app.post("/api/tags/{epc}/estornar")
 def estornar_tag(epc: str, con: Con = Depends(conexao)):
     """Desfaz a baixa de uma etiqueta lida por engano."""

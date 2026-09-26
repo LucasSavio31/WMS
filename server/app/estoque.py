@@ -329,6 +329,21 @@ def baixa_tag(con, epc, motivo, origem="COLETOR", documento=None, endereco_id=No
     return {"epc": t["epc"], "sku": t["sku"], "lote": t["lote"], "avisos": avisos}
 
 
+def regravar_tag(con, antigo, novo):
+    """A etiqueta foi regravada no coletor (EPC novo). Se ela estava cadastrada, passa a usar o EPC novo."""
+    antigo, novo = (antigo or "").strip().upper(), (novo or "").strip().upper()
+    if not novo:
+        raise ErroEstoque("Informe o EPC novo")
+    t = con.execute("SELECT t.epc, p.sku FROM tags t JOIN lotes l ON l.id=t.lote_id JOIN produtos p ON p.id=l.produto_id "
+                    "WHERE t.epc=?", (antigo,)).fetchone()
+    if not t or antigo == novo:
+        return {"atualizado": False}
+    if con.execute("SELECT 1 FROM tags WHERE epc=?", (novo,)).fetchone():
+        raise ErroEstoque(f"Já existe uma etiqueta cadastrada com o EPC {novo}")
+    con.execute("UPDATE tags SET epc=? WHERE epc=?", (novo, antigo))
+    return {"atualizado": True, "sku": t["sku"], "antigo": antigo, "novo": novo}
+
+
 def estornar_baixa_tag(con, epc, origem="COLETOR"):
     """Desfaz a baixa de uma etiqueta (lida por engano): ela volta para o estoque."""
     t = buscar_tag(con, epc)

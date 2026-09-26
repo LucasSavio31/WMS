@@ -7,6 +7,7 @@ import com.zebra.rfid.api3.ENUM_TRANSPORT
 import com.zebra.rfid.api3.ENUM_TRIGGER_MODE
 import com.zebra.rfid.api3.HANDHELD_TRIGGER_EVENT_TYPE
 import com.zebra.rfid.api3.INVENTORY_STATE
+import com.zebra.rfid.api3.MEMORY_BANK
 import com.zebra.rfid.api3.OperationFailureException
 import com.zebra.rfid.api3.RFIDReader
 import com.zebra.rfid.api3.Readers
@@ -18,7 +19,9 @@ import com.zebra.rfid.api3.SL_FLAG
 import com.zebra.rfid.api3.START_TRIGGER_TYPE
 import com.zebra.rfid.api3.STATUS_EVENT_TYPE
 import com.zebra.rfid.api3.STOP_TRIGGER_TYPE
+import com.zebra.rfid.api3.TagAccess
 import com.zebra.rfid.api3.TriggerInfo
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import kotlin.concurrent.thread
 
@@ -62,6 +65,9 @@ object Rfid : RfidEventsListener {
 
     /** Localizar: proximidade da etiqueta procurada, de 0 (longe) a 100 (colado). */
     var aoLocalizar: ((Int) -> Unit)? = null
+
+    /** Gravar etiqueta: (gravou?, mensagem, EPC antigo, EPC novo). */
+    var aoGravar: ((Boolean, String, String, String) -> Unit)? = null
 
     /** Problemas do leitor viram mensagem na tela (em vez de sumir em silêncio). */
     var aoAvisar: ((String) -> Unit)? = null
@@ -258,12 +264,109 @@ object Rfid : RfidEventsListener {
             if (potenciaNoLeitor == percentual) return@naFila
             if (lendo) parar(r)
             pararLocalizar(r)
-            val niveis = r.ReaderCapabilities.transmitPowerLevelValues
-            val config = r.Config.Antennas.getAntennaRfConfig(1)
-            config.setTransmitPowerIndex((niveis.size - 1) * percentual / 100)
-            r.Config.Antennas.setAntennaRfConfig(1, config)
-            potenciaNoLeitor = percentual
-            log("potência $percentual%")
+            aplicarPotencia(r, percentual)
+        }
+    }
+
+    private fun aplicarPotencia(r: RFIDReader, percentual: Int) {
+        val niveis = r.ReaderCapabilities.transmitPowerLevelValues
+        val config = r.Config.Antennas.getAntennaRfConfig(1)
+        config.setTransmitPowerIndex((niveis.size - 1) * percentual.coerceIn(1, 100) / 100)
+        r.Config.Antennas.setAntennaRfConfig(1, config)
+        potenciaNoLeitor = percentual
+        log("potência $percentual%")
+    }
+
+    // ------------------------------------------------ gravar etiqueta (regravar o EPC)
+
+    @Volatile private var coletando = false
+    private val achadas = ConcurrentHashMap<String, Short>()   // EPC -> RSSI mais forte
+
+    /**
+     * Grava [texto] (hexadecimal) como o novo EPC da etiqueta que está perto da antena.
+     *  1. Lê por 0,7 s na potência de gravação e escolhe a etiqueta: tem que haver uma só
+     *     (ou uma bem mais forte que as outras), para não gravar a etiqueta vizinha.
+     *  2. Grava pelo Tag ID (writeTagIDWait, que também ajusta o tamanho do EPC):
+     *     primeiro com o tamanho exato (completado com 0 à esquerda até múltiplo de 4, pois o EPC
+     *     é gravado em palavras de 16 bits); se a etiqueta não aceitar, com 24 dígitos (96 bits).
+     *  3. Último recurso: escreve direto no banco EPC (palavra 2 em diante) os 24 dígitos.
+     */
+    fun gravar(texto: String, potenciaGravacao: Int) {
+        naFila("não gravou a etiqueta") {
+            val r = leitor
+            if (r == null) {
+                aoGravar?.invoke(false, "Leitor RFID não conectado", "", "")
+                return@naFila
+            }
+            val hex = texto.trim().uppercase()
+            if (hex.isEmpty() || hex.length > 24 || !hex.all { it in "0123456789ABCDEF" }) {
+                aoGravar?.invoke(false, "O código tem que ter até 24 caracteres, só números e letras de A a F", "", "")
+                return@naFila
+            }
+            if (lendo) parar(r)
+            pararLocalizar(r)
+
+            // 1) acha a etiqueta perto da antena
+            val potenciaAntes = potenciaNoLeitor ?: 100
+            achadas.clear()
+            try {
+                aplicarPotencia(r, potenciaGravacao)
+                coletando = true
+                r.Actions.Inventory.perform()
+                Thread.sleep(700)
+                r.Actions.Inventory.stop()
+                Thread.sleep(250)
+            } finally {
+                coletando = false
+                aplicarPotencia(r, potenciaAntes)
+            }
+            val ordem = achadas.entries.sortedByDescending { it.value }
+            log("gravar: ${ordem.size} etiqueta(s) perto ${ordem.take(3).map { "${it.key}(${it.value})" }}")
+            if (ordem.isEmpty()) {
+                aoGravar?.invoke(false, "Nenhuma etiqueta perto: encoste o coletor na etiqueta", "", "")
+                return@naFila
+            }
+            if (ordem.size > 1 && ordem[0].value - ordem[1].value < 10) {
+                aoGravar?.invoke(false, "Mais de uma etiqueta perto: deixe só a que vai gravar (ou baixe a potência de gravação)", "", "")
+                return@naFila
+            }
+            val antiga = ordem[0].key
+
+            // 2) grava: tamanho exato; se não der, 24 dígitos
+            val exato = hex.padStart((hex.length + 3) / 4 * 4, '0')
+            val cheio = hex.padStart(24, '0')
+            var erro = ""
+            for (dado in listOf(exato, cheio).distinct()) {
+                try {
+                    val p = TagAccess().WriteSpecificFieldAccessParams()
+                    p.setAccessPassword(0)
+                    p.setWriteData(dado)
+                    p.setWriteDataLength(dado.length / 4)
+                    r.Actions.TagAccess.writeTagIDWait(antiga, p, null)
+                    log("gravar: $antiga -> $dado")
+                    aoGravar?.invoke(true, "Gravado", antiga, dado)
+                    return@naFila
+                } catch (e: Throwable) {
+                    erro = (e as? OperationFailureException)?.vendorMessage ?: e.message ?: e.javaClass.simpleName
+                    Log.w(TAG, "gravar: writeTagIDWait $dado falhou ($erro)")
+                }
+            }
+            // 3) último recurso: banco EPC a partir da palavra 2 (depois do CRC e do PC)
+            try {
+                val p = TagAccess().WriteAccessParams()
+                p.setAccessPassword(0)
+                p.setMemoryBank(MEMORY_BANK.MEMORY_BANK_EPC)
+                p.setOffset(2)
+                p.setWriteData(cheio)
+                p.setWriteDataLength(cheio.length / 4)
+                r.Actions.TagAccess.writeWait(antiga, p, null, null, true, false)
+                log("gravar (banco EPC): $antiga -> $cheio")
+                aoGravar?.invoke(true, "Gravado", antiga, cheio)
+            } catch (e: Throwable) {
+                val detalhe = (e as? OperationFailureException)?.vendorMessage ?: e.message ?: erro
+                Log.w(TAG, "gravar: writeWait falhou ($detalhe)")
+                aoGravar?.invoke(false, "A etiqueta não aceitou a gravação ($detalhe)", antiga, "")
+            }
         }
     }
 
@@ -386,6 +489,10 @@ object Rfid : RfidEventsListener {
     override fun eventReadNotify(e: RfidReadEvents?) {
         try {
             val tags = leitor?.Actions?.getReadTags(100) ?: return
+            if (coletando) {
+                for (tag in tags) achadas.merge(tag.tagID, tag.peakRSSI) { a, b -> if (b > a) b else a }
+                return
+            }
             if (localizando) {
                 for (tag in tags) if (tag.isContainsLocationInfo) {
                     proximidade = tag.LocationInfo.relativeDistance.toInt()

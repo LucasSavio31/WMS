@@ -422,3 +422,16 @@ def test_renomear_local_atualiza_historico(api):
     locais = {m["endereco"] for m in api.get("/api/movimentos").json()}
     assert locais == {"Local-01", "Galpão"}
     assert api.post("/api/baixas", json={"produto_id": pid, "quantidade": 2, "endereco_id": b}).status_code == 200
+
+
+def test_regravar_tag(api):
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "epcs": ["AAA1", "BBB2"]})
+    r = api.post("/api/tags/regravar", json={"antigo": "aaa1", "novo": "0007891234567"}).json()
+    assert r["atualizado"] is True
+    assert api.get("/api/tags/0007891234567").json()["status"] == "ATIVA"
+    assert api.get("/api/tags/AAA1").status_code == 400
+    # etiqueta que não estava cadastrada: nada a atualizar
+    assert api.post("/api/tags/regravar", json={"antigo": "FFFF", "novo": "1234"}).json()["atualizado"] is False
+    # EPC novo já usado por outra etiqueta
+    assert api.post("/api/tags/regravar", json={"antigo": "BBB2", "novo": "0007891234567"}).status_code == 400

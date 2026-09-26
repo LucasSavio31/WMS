@@ -25,7 +25,7 @@ separados no coletor.
 |---|---|---|
 | **Servidor** (`server/`) | O "cérebro": guarda o estoque, aplica todas as regras (entrada, baixa, locais, inventário, ordens de recebimento), grava cada movimento com data/hora e gera os relatórios. Serve as telas do PC e do coletor e a API que o coletor usa. | Python 3.11, **FastAPI** (API HTTP/JSON), **Uvicorn** (servidor web), **Pydantic** (validação dos dados), **SQLite** em modo WAL (banco em um arquivo), **fpdf2** (relatórios PDF), **PyInstaller** (gera o `WMS-Servidor.exe`), **pytest** (testes automáticos) |
 | **Tela do PC** (`server/app/static/index.html`) | Sistema de estoque no navegador: Dashboard, Estoque (mover entre locais), Locais, Produtos, Ordens de recebimento, Baixa, Inventário e Histórico. Atualiza sozinha a cada 5 s (as leituras do coletor aparecem na hora). | HTML, CSS e **JavaScript puro** (sem framework), `fetch` para a API, tema claro/escuro automático |
-| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
+| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta, Gravar etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
 | **AppCenter** (`AppCenter.apk`, `coletor/appcenter/`) | Tela inicial do coletor em **modo quiosque** (como o AppCenter dos MC9090): fundo branco e só os apps liberados; área do administrador com 5 toques + PIN. Volta sozinho ao ligar o coletor. | **Kotlin**, só o Android (sem bibliotecas), **Device Owner** (`DevicePolicyManager`), modo **Lock Task** do Android, `activity-alias` de tela inicial (HOME), `BootReceiver` |
 
 Os três arquivos prontos (`WMS-Servidor.exe`, `ColetorWMS.apk` e `AppCenter.apk`) são gerados pelo **GitHub Actions**
@@ -73,7 +73,8 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Coletor | **Inventário**: inicia no coletor, lê as etiquetas; ao finalizar, etiqueta não lida sai e etiqueta achada volta |
 | Coletor | **Consulta**: escolhe o local e toca em **Consultar**: aparecem os itens daquele local com a quantidade e as etiquetas RFID vinculadas (toque para ver os EPCs), como no PC |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
-| Coletor | **Config** (protegida pela **senha 1234**): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa e Localizar, e servidor (procurar na rede ou digitar) |
+| Coletor | **Gravar** (regravar etiqueta): bipe um código de barras (ou digite) e ele fica no campo; encoste o coletor na etiqueta e toque em **Gravar**: o código vira o novo EPC da etiqueta. Grava com o tamanho do código quando a etiqueta aceita (completando com 0 à esquerda até múltiplo de 4); senão, com 24 dígitos. Se a etiqueta estava cadastrada, o cadastro passa a usar o EPC novo |
+| Coletor | **Config** (protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar e Gravar, e servidor (procurar na rede ou digitar) |
 
 **Locais de estoque**: tudo que entra (ordem de recebimento ou entrada) vai para o **Local-01**. Quem não usa
 outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* e leve os itens pela tela
@@ -158,7 +159,7 @@ o navegador não faz sozinho:
 - Tela cheia do app; hora, Wi-Fi e bateria ficam na barra do próprio Android.
 - Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
 
-Telas: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta e Config (com senha 1234). Como as telas vêm do servidor,
+Telas: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta, Gravar etiqueta e Config (com PIN 1234). Como as telas vêm do servidor,
 qualquer melhoria chega ao coletor sem reinstalar o app.
 
 ### Como o RFID funciona no app
@@ -214,7 +215,21 @@ do inventário. O leitor devolve em `eventReadNotify` a **distância relativa** 
 0 = longe, 100 = colado), que vai para a tela com `proximidadeRfid(n)`: barra quente/frio e bipe mais rápido.
 O LED verde pisca em estrobo (`RfidServiceMgr.getInstance().ledBlink()`), mais rápido quanto mais perto.
 
-**5. Cuidados que evitam o leitor travar**
+**5. Gravar etiqueta (regravar o EPC)**
+
+`ColetorApp.gravarEtiqueta(código, potência)` → `Rfid.gravar()`:
+
+1. Lê por 0,7 s na **potência de gravação** (Config, padrão 30%) e escolhe a etiqueta: tem que haver uma só
+   perto (ou uma bem mais forte, 10 dB acima das outras), para não gravar a etiqueta vizinha.
+2. Grava pelo **Tag ID**: `Actions.TagAccess.writeTagIDWait(epcAtual, WriteSpecificFieldAccessParams, null)`, que
+   escreve o EPC e ajusta o tamanho dele na etiqueta. O EPC é gravado em palavras de 16 bits (4 dígitos), por isso
+   o código é completado com 0 à esquerda até múltiplo de 4. Se a etiqueta não aceitar mudar o tamanho, grava com
+   24 dígitos (96 bits).
+3. Último recurso: `writeWait` direto no banco de memória EPC (`MEMORY_BANK_EPC`, palavra 2 em diante).
+4. O resultado volta para a tela com `resultadoGravacao(json)`; a tela avisa o servidor (`POST /api/tags/regravar`)
+   para o cadastro da etiqueta passar a usar o EPC novo.
+
+**6. Cuidados que evitam o leitor travar**
 
 - **Fila única**: todo comando ao leitor vai para uma fila de uma thread só (`Executors.newSingleThreadExecutor`).
   Trocar o gatilho ou a potência no meio de uma leitura faz o SDK recusar e às vezes o leitor para de responder.
@@ -358,6 +373,8 @@ O `gradlew assembleDebug` compila os dois apps (Coletor WMS e AppCenter).
 | Tela → app | `ColetorApp.gatilhoRfid(true/false)` | gatilho lê RFID ou código de barras (`setTriggerMode`) |
 | Tela → app | `ColetorApp.potencia(%)` | potência da antena |
 | Tela → app | `ColetorApp.localizar(epc)` / `procurar(true/false)` | Localizar: escolhe a etiqueta / procura sem o gatilho |
+| Tela → app | `ColetorApp.gravarEtiqueta(código, potência)` | Gravar: regrava o EPC da etiqueta perto da antena |
+| App → tela | `resultadoGravacao(json)` | Gravar: gravou ou não, EPC antigo e novo |
 | Tela → app | `ColetorApp.servidor()` | abre o popup do endereço do servidor |
 
 ---
