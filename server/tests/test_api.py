@@ -435,3 +435,30 @@ def test_regravar_tag(api):
     assert api.post("/api/tags/regravar", json={"antigo": "FFFF", "novo": "1234"}).json()["atualizado"] is False
     # EPC novo já usado por outra etiqueta
     assert api.post("/api/tags/regravar", json={"antigo": "BBB2", "novo": "0007891234567"}).status_code == 400
+
+
+def test_leitor_remoto(api):
+    from app import remoto
+    pid = produto(api)
+    api.post("/api/entradas", json={"produto_id": pid, "epcs": ["EST1"]})
+    # coletor ainda não perguntou: offline
+    assert api.get("/api/remoto/estado").json()["online"] is False
+    ultimo = api.get("/api/remoto/comandos?apos=-1").json()["ultimo"]   # coletor abre a tela
+    c = api.post("/api/remoto/comando", json={"acao": "ler", "ms": 0, "potencia": 50}).json()
+    cmds = api.get(f"/api/remoto/comandos?apos={ultimo}").json()["comandos"]
+    assert [x["acao"] for x in cmds] == ["ler"] and cmds[0]["id"] == c["id"]
+    api.post("/api/remoto/leituras", json={"epcs": ["est1", "NOVA9", "NOVA9"]})
+    api.post("/api/remoto/leituras", json={"epcs": ["NOVA9"]})
+    e = api.get("/api/remoto/estado").json()
+    assert e["online"] is True and e["lendo"] is True
+    por_epc = {l["epc"]: l for l in e["leituras"]}
+    assert por_epc["EST1"]["status"] == "ATIVA" and por_epc["EST1"]["sku"] == "LEITE"
+    assert por_epc["NOVA9"]["status"] is None and por_epc["NOVA9"]["vezes"] == 2
+    # gravar: valida o código; o coletor devolve o resultado como evento
+    assert api.post("/api/remoto/comando", json={"acao": "gravar", "texto": "XYZ"}).status_code == 400
+    api.post("/api/remoto/comando", json={"acao": "gravar", "texto": "abc123"})
+    api.post("/api/remoto/evento", json={"tipo": "gravacao", "dados": {"ok": True, "novo": "ABC123"}})
+    ev = api.get("/api/remoto/estado?eventos_apos=0").json()["eventos"]
+    assert ev[-1]["tipo"] == "gravacao" and ev[-1]["dados"]["novo"] == "ABC123"
+    api.post("/api/remoto/comando", json={"acao": "limpar"})
+    assert api.get("/api/remoto/estado").json()["leituras"] == []

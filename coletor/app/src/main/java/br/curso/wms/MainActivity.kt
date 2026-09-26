@@ -18,6 +18,7 @@ import android.os.Looper
 import android.text.InputType
 import android.util.Log
 import android.view.KeyEvent
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -334,6 +335,17 @@ class MainActivity : Activity() {
         /** Tela Config: procurar o servidor na rede Wi-Fi. */
         @JavascriptInterface
         fun procurarServidor() = runOnUiThread { this@MainActivity.procurarServidor() }
+
+        /** Leitor do PC: liga/desliga a leitura RFID sem o gatilho (o PC comanda). */
+        @JavascriptInterface
+        fun lerContinuo(ligar: Boolean) = Rfid.lerContinuo(ligar)
+
+        /** Leitor do PC: tela sempre ligada (com a tela apagada o Android para o leitor). */
+        @JavascriptInterface
+        fun manterTelaLigada(ligar: Boolean) = runOnUiThread {
+            if (ligar) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
 
         /** Modo local: tenta abrir a tela do servidor de novo. */
         @JavascriptInterface

@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import db, estoque, relatorios
+from . import db, estoque, relatorios, remoto
 from .estoque import MOTIVOS_BAIXA, ErroEstoque
 
 STATIC = os.path.join(os.path.dirname(__file__), "static")
@@ -748,3 +748,56 @@ def incluir_sobras(inventario_id: int, i: IncluirSobras, con: Con = Depends(cone
 @app.post("/api/inventarios/{inventario_id}/cancelar")
 def cancelar_inventario(inventario_id: int, con: Con = Depends(conexao)):
     return estoque.cancelar_inventario(con, inventario_id)
+
+
+# ================================================================ leitor remoto (o PC aciona o leitor do coletor)
+class ComandoRemoto(BaseModel):
+    acao: Literal["ler", "parar", "gravar", "limpar"]
+    ms: int = 3000                    # ler: por quanto tempo (0 = até mandar parar)
+    texto: Optional[str] = None       # gravar: o código que vira o EPC
+    potencia: Optional[int] = Field(None, ge=1, le=100)
+
+
+class LeiturasRemotas(BaseModel):
+    epcs: list[str]
+
+
+class EventoRemoto(BaseModel):
+    tipo: str
+    dados: dict = {}
+
+
+@app.post("/api/remoto/comando")
+def remoto_comando(c: ComandoRemoto):
+    """PC: manda o coletor ler, parar, gravar ou limpar a lista."""
+    if c.acao == "gravar":
+        texto = (c.texto or "").strip().upper()
+        if not texto or len(texto) > 24 or any(ch not in "0123456789ABCDEF" for ch in texto):
+            raise ErroEstoque("O código tem que ter até 24 caracteres, só números e letras de A a F")
+        c.texto = texto
+    return remoto.comando(c.acao, c.ms, c.texto, c.potencia)
+
+
+@app.get("/api/remoto/comandos")
+def remoto_comandos(apos: int = -1):
+    """Coletor (tela Leitor do PC): comandos novos do PC."""
+    return remoto.comandos_para_coletor(apos)
+
+
+@app.post("/api/remoto/leituras")
+def remoto_leituras(r: LeiturasRemotas):
+    """Coletor: etiquetas lidas."""
+    return {"total": remoto.registrar_leituras(r.epcs)}
+
+
+@app.post("/api/remoto/evento")
+def remoto_evento(e: EventoRemoto):
+    """Coletor: resultado de um comando (gravação, parou de ler)."""
+    remoto.registrar_evento(e.tipo, e.dados)
+    return {"ok": True}
+
+
+@app.get("/api/remoto/estado")
+def remoto_estado(eventos_apos: int = 0, con: Con = Depends(conexao)):
+    """PC: coletor conectado, leituras (com a situação no estoque) e eventos novos."""
+    return remoto.estado(con, eventos_apos)

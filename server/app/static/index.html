@@ -223,6 +223,7 @@
       <a href="#enderecos" data-pagina="enderecos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V9l9-6 9 6v12 M7 21v-8h10v8 M7 17h10"/></svg>Locais</a>
       <a href="#ordens" data-pagina="ordens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M12 11v6 M9 14l3 3 3-3"/></svg>Ordens de recebimento<span class="contador" id="cntRec"></span></a>
       <a href="#saida" data-pagina="saida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21V9 M7 14l5-5 5 5 M4 3h16"/></svg>Baixa</a>
+      <a href="#remoto" data-pagina="remoto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h12v9H3z M7 18h4 M9 14v4 M17 8h4v13h-4z M19 17v.01"/></svg>Leitor remoto</a>
       <a href="#inventario" data-pagina="inventario"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2 M9 5a2 2 0 002 2h2a2 2 0 002-2 2 2 0 00-2-2h-2a2 2 0 00-2 2z M9 14l2 2 4-4"/></svg>Inventário<span class="contador" id="cntInv"></span></a>
       <a href="#movimentos" data-pagina="movimentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16 M4 12h16 M4 18h10"/></svg>Histórico</a>
       <div class="grupo">Sistema</div>
@@ -403,6 +404,56 @@
                 <button type="reset">Limpar</button>
               </div>
             </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================== LEITOR REMOTO -->
+      <section class="pagina" id="remoto" data-titulo="Leitor remoto"
+               data-sub="O PC aciona o leitor RFID do coletor pelo Wi-Fi. No coletor, abra a tela Leitor do PC e deixe aberta">
+        <div class="card">
+          <div class="card-titulo"><span id="rmStatus" class="fraco">Conectando…</span>
+            <span class="acoes">
+              <select id="rmPot" title="Potência da leitura" style="width:auto">
+                <option value="100">Potência 100%</option><option value="75">75%</option><option value="50">50%</option>
+                <option value="30">30%</option><option value="15">15%</option></select>
+              <button class="primario" id="rmLer3">▶ Ler 3 s</button>
+              <button id="rmLer">▶ Ler até parar</button>
+              <button id="rmParar">■ Parar</button>
+              <button id="rmLimpar">Limpar lista</button>
+            </span></div>
+          <div class="tabela"><table>
+            <thead><tr><th>EPC</th><th>Situação no estoque</th><th class="num">Vezes</th></tr></thead>
+            <tbody id="tabRemoto"></tbody></table></div>
+        </div>
+        <div class="card">
+          <h2>Gravar etiqueta</h2>
+          <p class="ajuda">Digite ou bipe o código: ele vira o novo EPC da etiqueta encostada no coletor
+            (até 24 caracteres, números e letras A–F; menor que 24 é completado com 0 à esquerda).</p>
+          <div class="barra">
+            <input id="rmCodigo" class="mono" style="max-width:320px" placeholder="Código a gravar" autocomplete="off">
+            <select id="rmPotGrav" title="Potência da gravação" style="width:auto">
+              <option value="30">Potência 30%</option><option value="15">15%</option><option value="50">50%</option>
+              <option value="100">100%</option></select>
+            <button class="primario" id="rmGravar">📝 Gravar</button>
+            <span id="rmGravResultado" class="fraco"></span>
+          </div>
+        </div>
+        <div class="grade g2">
+          <div class="card">
+            <h2>Entrada das etiquetas lidas</h2>
+            <p class="ajuda">Só as etiquetas novas (as que já estão em estoque são ignoradas). Entram no Local-01.</p>
+            <label class="campo"><span>Produto</span><select id="rmProduto" data-produtos="ativos"></select></label>
+            <div class="botoes"><button class="sucesso" id="rmEntrar" disabled>Dar entrada</button></div>
+          </div>
+          <div class="card">
+            <h2>Baixa das etiquetas lidas</h2>
+            <p class="ajuda">Só as etiquetas em estoque no local escolhido.</p>
+            <div class="campos">
+              <label class="campo"><span>Local</span><select id="rmLocal" data-enderecos></select></label>
+              <label class="campo"><span>Motivo</span><select id="rmMotivo" data-motivos></select></label>
+            </div>
+            <div class="botoes"><button class="perigo" id="rmBaixar" disabled>Baixar</button></div>
           </div>
         </div>
       </section>
@@ -1268,6 +1319,89 @@ aoEnviar($("formEpc"), async () => {
   avisar([...new Set(ok.flatMap((t) => t.avisos))]);
 });
 
+// ======================================================================= leitor remoto
+// O PC manda comandos para o coletor (tela "Leitor do PC") pelo servidor e mostra as leituras ao vivo.
+let remotoTimer = null, remoto = { leituras: [], online: false }, remotoVersao = -1, remotoEventos = 0;
+async function carregarRemoto() {
+  if (!remotoTimer) remotoTimer = setInterval(consultarRemoto, 600);
+  await consultarRemoto();
+}
+async function consultarRemoto() {
+  if (paginaAtual !== "remoto") { clearInterval(remotoTimer); remotoTimer = null; return; }
+  let e;
+  try { e = await api("GET", "/api/remoto/estado?eventos_apos=" + remotoEventos); } catch { return; }
+  remoto.online = e.online;
+  $("rmStatus").innerHTML = e.online
+    ? `<span class="selo sucesso">Coletor conectado</span> ${e.lendo ? '<span class="selo info">lendo…</span>' : ""}`
+    : `<span class="selo perigo">Coletor não conectado</span> <span class="fraco">No coletor, abra a tela <b>Leitor do PC</b> (fora do cabo USB).</span>`;
+  ["rmLer3", "rmLer", "rmParar", "rmGravar"].forEach((id) => { $(id).disabled = !e.online; });
+  for (const ev of e.eventos) {
+    remotoEventos = ev.id;
+    if (ev.tipo === "gravacao") resultadoGravacaoRemota(ev.dados);
+  }
+  if (e.versao !== remotoVersao) { remotoVersao = e.versao; remoto.leituras = e.leituras; desenharRemoto(); }
+}
+function situacaoRemota(l) {
+  if (!l.status) return '<span class="selo info">Nova</span> <span class="fraco">sem cadastro</span>';
+  if (l.status === "ATIVA") return `<span class="selo sucesso">Em estoque</span> <b>${esc(l.sku)}</b> <span class="fraco">${esc(l.descricao)} · ${esc(l.endereco)}</span>`;
+  return `<span class="selo">Baixada</span> ${esc(l.sku)}`;
+}
+const remotoNovas = () => remoto.leituras.filter((l) => l.status !== "ATIVA");
+const remotoNoLocal = () => remoto.leituras.filter((l) => l.status === "ATIVA" && l.endereco_id === Number($("rmLocal").value));
+function desenharRemoto() {
+  $("tabRemoto").innerHTML = remoto.leituras.map((l) => `<tr><td class="mono">${esc(l.epc)}</td><td>${situacaoRemota(l)}</td>
+      <td class="num">${l.vezes}</td></tr>`).join("") || vazio(3, "Nenhuma etiqueta lida. Clique em Ler.");
+  const n = remotoNovas().length, b = remotoNoLocal().length;
+  $("rmEntrar").textContent = `Dar entrada nas novas (${n})`; $("rmEntrar").disabled = !n;
+  $("rmBaixar").textContent = `Baixar as deste local (${b})`; $("rmBaixar").disabled = !b;
+}
+const comandoRemoto = (corpo) => api("POST", "/api/remoto/comando", corpo);
+$("rmLer3").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "ler", ms: 3000, potencia: Number($("rmPot").value) })));
+$("rmLer").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "ler", ms: 0, potencia: Number($("rmPot").value) })));
+$("rmParar").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "parar" })));
+$("rmLimpar").addEventListener("click", (ev) => executar(ev.currentTarget, async () => { await comandoRemoto({ acao: "limpar" }); remotoVersao = -1; }));
+$("rmLocal").addEventListener("change", desenharRemoto);
+$("rmGravar").addEventListener("click", (ev) => executar(ev.currentTarget, async () => {
+  const v = $("rmCodigo").value.trim().toUpperCase();
+  if (!/^[0-9A-F]{1,24}$/.test(v)) throw new Error("O código tem que ter até 24 caracteres, só números e letras de A a F");
+  await comandoRemoto({ acao: "gravar", texto: v, potencia: Number($("rmPotGrav").value) });
+  $("rmGravResultado").textContent = "Enviado ao coletor: encoste o coletor na etiqueta…";
+}));
+$("rmCodigo").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("rmGravar").click(); } });
+function resultadoGravacaoRemota(r) {
+  if (r.ok) {
+    $("rmGravResultado").innerHTML = `<span class="selo sucesso">Gravado</span> <span class="mono">${esc(r.antigo)}</span> → <b class="mono">${esc(r.novo)}</b>` +
+      (r.cadastro ? ` · cadastro de ${esc(r.cadastro)} atualizado` : "");
+    toast(`Etiqueta gravada: ${r.novo}`);
+    $("rmCodigo").value = "";
+  } else {
+    $("rmGravResultado").innerHTML = `<span class="selo perigo">Não gravou</span> ${esc(r.mensagem || "")}`;
+    toast("Não gravou: " + (r.mensagem || ""), "erro");
+  }
+}
+$("rmEntrar").addEventListener("click", async (ev) => {
+  const p = produtoPorId($("rmProduto").value);
+  if (!p) return toast("Escolha o produto", "erro");
+  const epcs = remotoNovas().map((l) => l.epc);
+  if (!(await confirmar("Dar entrada", `Dar entrada de ${epcs.length} etiqueta(s) em ${p.sku} · ${p.descricao} (Local-01)?`, "Dar entrada", "sucesso"))) return;
+  executar(ev.target, async () => {
+    const r = await api("POST", "/api/entradas", { produto_id: p.id, epcs, origem: "PC", meio: "RFID" });
+    toast(`Entrada de ${num(r.quantidade)} ${p.sku}`);
+    remotoVersao = -1; await consultarRemoto();
+  });
+});
+$("rmBaixar").addEventListener("click", async (ev) => {
+  const epcs = remotoNoLocal().map((l) => l.epc);
+  const local = $("rmLocal").selectedOptions[0]?.text || "";
+  if (!(await confirmar("Confirmar baixa", `Baixar ${epcs.length} etiqueta(s) de ${local}\nMotivo: ${$("rmMotivo").value}`, "Confirmar baixa"))) return;
+  executar(ev.target, async () => {
+    const r = await api("POST", "/api/baixas", { epcs, motivo: $("rmMotivo").value, endereco_id: Number($("rmLocal").value), origem: "PC", meio: "RFID" });
+    const ok = r.tags.filter((t) => t.ok).length;
+    toast(`${ok} etiqueta(s) baixada(s)`, ok === epcs.length ? "ok" : "alerta");
+    remotoVersao = -1; await consultarRemoto();
+  });
+});
+
 // ======================================================================= pedidos / expedição
 let itensNovoPedido = [], pedidoAtual = null, pedidos = [];
 const disponivelProduto = (id) => estoqueLinhas.filter((l) => l.produto_id === id && l.lote_id && l.status === "LIBERADO" && !(l.dias_para_vencer < 0))
@@ -1626,7 +1760,7 @@ $("formLimpar").addEventListener("submit", (ev) => {
 // ======================================================================= atualização automática
 // O que o coletor faz aparece aqui sozinho (a tela consulta o servidor a cada 5 s).
 const carregadores = {
-  painel: carregarPainel, dash: carregarDash, estoque: carregarEstoque, ordens: carregarOrdens, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
+  painel: carregarPainel, dash: carregarDash, estoque: carregarEstoque, remoto: carregarRemoto, ordens: carregarOrdens, recebimento: carregarRecebimento, expedicao: carregarExpedicao,
   inventario: async () => { await carregarInventarios(); await carregarInventario(); }, movimentos: carregarMovimentos,
   produtos: async () => { await carregarCadastros(); desenharProdutos(); },
   enderecos: async () => { await carregarCadastros(); desenharEnderecos(); },

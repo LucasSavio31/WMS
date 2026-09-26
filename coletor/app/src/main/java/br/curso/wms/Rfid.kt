@@ -521,6 +521,19 @@ object Rfid : RfidEventsListener {
         aoLocalizar?.invoke(-1)   // -1 = procura parada
     }
 
+    /** Leitura contínua sem o gatilho (tela Leitor do PC: o PC manda ler e parar). */
+    fun lerContinuo(ligar: Boolean) {
+        naFila(if (ligar) "não começou a leitura" else "não parou a leitura") {
+            val r = leitor ?: return@naFila
+            if (ligar) {
+                pararLocalizar(r)
+                iniciar(r)
+            } else {
+                parar(r)
+            }
+        }
+    }
+
     /** Lê por alguns segundos sem usar o gatilho (botão "Ler 3 s" da tela). */
     fun lerPor(ms: Long) {
         log("ler por $ms ms (leitor ${if (leitor == null) "NÃO conectado" else "conectado"})")

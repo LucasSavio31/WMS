@@ -281,7 +281,7 @@ async function api(metodo, url, corpo) {
 // Potência da antena (%) por tipo de tela: Recebimento (ordem e entrada), Baixa e Localizar
 const cfg = { volume: 100, potRecebimento: 100, potBaixa: 100, potLocalizar: 100, potLer: 100, potGravar: 30, localBaixa: null };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem("coletor.cfg") || "{}")); } catch {}
-const POTENCIA_DA_TELA = { entrada: "potRecebimento", avulsa: "potRecebimento", baixa: "potBaixa", localizar: "potLocalizar", ler: "potLer" };
+const POTENCIA_DA_TELA = { entrada: "potRecebimento", avulsa: "potRecebimento", baixa: "potBaixa", localizar: "potLocalizar", ler: "potLer", remoto: "potLer" };
 const potenciaDaTela = (nome) => cfg[POTENCIA_DA_TELA[nome]] || 100;   // outras telas (inventário): 100%
 function salvarCfg() { try { localStorage.setItem("coletor.cfg", JSON.stringify(cfg)); } catch {} }
 // No app, o volume é o volume de mídia do próprio coletor; no navegador, o volume do bipe.
@@ -756,6 +756,7 @@ function abrir(nome) {
   if (LOCAL && !TELAS_LOCAIS.includes(nome)) nome = "menu";
   if (nome !== "config") configLiberada = false;
   if (telaAtual === "ler" && nome !== "ler") { try { app?.detalharEtiquetas?.(false); } catch {} }
+  if (telaAtual === "remoto" && nome !== "remoto") telas.remoto.sair();
   if (telaAtual === "localizar" && nome !== "localizar") telas.localizar.sair();
   telaAtual = nome;
   $("titulo").textContent = telas[nome].titulo;
@@ -812,6 +813,7 @@ telas.menu = {
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
       ${item("consulta", "🔍", "Consulta<br><small class=fraco>estoque por local</small>")}${item("localizar", "🎯", "Localizar etiqueta")}
       ${item("gravar", "📝", "Gravar<br><small class=fraco>regravar etiqueta</small>")}${item("ler", "📡", "Ler etiqueta<br><small class=fraco>mostra o EPC</small>")}
+      ${item("remoto", "🖥️", "Leitor do PC<br><small class=fraco>o PC comanda</small>")}
     </div>`;
     try {
       const r = await api("GET", "/api/resumo");
@@ -1502,6 +1504,108 @@ telas.ler = {
   codigo(c) { msg("Código de barras: " + c, "info"); },
 };
 
+// ======================================================================= LEITOR DO PC
+// O PC comanda: esta tela pergunta ao servidor por comandos (ler, parar, gravar, limpar),
+// executa no leitor RFID e devolve as leituras. O gatilho também lê. Deixe a tela aberta.
+telas.remoto = {
+  titulo: "Leitor do PC",
+  abrir() {
+    this.apos = null; this.enviadas = new Set(); this.buffer = []; this.n = 0;
+    tela.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:48px;line-height:1.1">🖥️</div>
+        <h2 style="justify-content:center">Leitor do PC</h2>
+        <div id="rmEstado" style="font-size:17px;font-weight:600">Conectando ao servidor…</div></div>
+      <div class="card"><h2>Etiquetas lidas <span class="dir"><span class="contador" id="rmCont">0</span></span></h2>
+        <div class="mono fraco" id="rmUltima" style="word-break:break-all">—</div></div>
+      <p class="fraco" style="text-align:center;padding:0 12px">Deixe esta tela aberta: o PC (menu <b>Leitor remoto</b>) manda ler e gravar.
+        O gatilho também lê.</p>`;
+    try { app?.manterTelaLigada?.(true); } catch {}
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.buscar(), 400);
+    this.buscar();
+  },
+  sair() {
+    clearInterval(this.timer); this.timer = null;
+    clearTimeout(this.fimLeitura);
+    this.lerLigado(false);
+    try { app?.manterTelaLigada?.(false); } catch {}
+  },
+  estado(t) { if ($("rmEstado")) $("rmEstado").textContent = t; },
+  lerLigado(ligar) { try { app?.lerContinuo?.(ligar); } catch {} },
+  async buscar() {
+    if (this.buscando) return;
+    this.buscando = true;
+    try {
+      const r = await api("GET", "/api/remoto/comandos?apos=" + (this.apos ?? -1));
+      if (telaAtual !== "remoto") return;
+      if (this.apos === null) {   // começa do último comando (não executa comandos antigos)
+        this.apos = r.ultimo;
+        this.estado(app?.lerContinuo ? "Pronto: aguardando o PC" : "Atualize o ColetorWMS.apk para usar o Leitor do PC");
+        return;
+      }
+      for (const c of r.comandos) { this.apos = c.id; this.executar(c); }
+      if (this.semRede) { this.semRede = false; this.estado("Pronto: aguardando o PC"); }
+    } catch {
+      this.semRede = true;
+      this.estado("Sem conexão com o servidor");
+    } finally {
+      this.buscando = false;
+    }
+  },
+  executar(c) {
+    if (c.acao === "ler") {
+      definirPotencia(c.potencia || potenciaDaTela("remoto"));
+      clearTimeout(this.fimLeitura);
+      this.lerLigado(true);
+      this.estado(c.ms > 0 ? `Lendo por ${c.ms / 1000} s (comando do PC)…` : "Lendo até o PC mandar parar…");
+      if (c.ms > 0) this.fimLeitura = setTimeout(() => this.parar(), c.ms);
+    } else if (c.acao === "parar") {
+      this.parar();
+    } else if (c.acao === "limpar") {
+      this.enviadas.clear(); this.n = 0;
+      if ($("rmCont")) { $("rmCont").textContent = "0"; $("rmUltima").textContent = "—"; }
+    } else if (c.acao === "gravar") {
+      clearTimeout(this.fimLeitura);
+      this.lerLigado(false);
+      if (!app?.gravarEtiqueta) return this.evento("gravacao", { ok: false, mensagem: "Atualize o ColetorWMS.apk" });
+      this.estado(`Gravando ${c.texto}: encoste o coletor na etiqueta…`);
+      app.gravarEtiqueta(c.texto, c.potencia || cfg.potGravar || 30);
+    }
+  },
+  parar() {
+    clearTimeout(this.fimLeitura);
+    this.lerLigado(false);
+    definirPotencia(potenciaDaTela("remoto"));
+    this.estado("Pronto: aguardando o PC");
+    this.evento("parou", {});
+  },
+  evento(tipo, dados) { api("POST", "/api/remoto/evento", { tipo, dados }).catch(() => {}); },
+  async resultadoGravacao(r) {
+    bipe(r.ok ? "ok" : "alerta");
+    this.estado(r.ok ? `✓ Gravado: ${r.novo}` : r.mensagem);
+    if (r.ok) {   // o cadastro da etiqueta passa a usar o EPC novo
+      try { const x = await api("POST", "/api/tags/regravar", { antigo: r.antigo, novo: r.novo }); r.cadastro = x.atualizado ? x.sku : null; }
+      catch (e) { r.cadastroErro = e.message; }
+    }
+    this.evento("gravacao", r);
+  },
+  rfid(epc) {
+    if (this.enviadas.has(epc)) return;   // cada etiqueta vai uma vez (o PC conta e mostra)
+    this.enviadas.add(epc); this.n++;
+    bipe("ok");
+    if ($("rmCont")) { $("rmCont").textContent = this.n; $("rmUltima").textContent = epc; }
+    this.buffer.push(epc);
+    clearTimeout(this.timerEnvio);
+    this.timerEnvio = setTimeout(() => this.enviar(), 250);
+  },
+  async enviar() {
+    const epcs = this.buffer; this.buffer = [];
+    if (!epcs.length) return;
+    try { await api("POST", "/api/remoto/leituras", { epcs }); }
+    catch { epcs.forEach((e) => this.enviadas.delete(e)); }   // sem rede: pode ler de novo
+  },
+  codigo(c) { msg("Código de barras: " + c, "info"); },
+};
+
 // ======================================================================= GRAVAR
 // Regrava o EPC de uma etiqueta: o código (bipado ou digitado) vira o novo EPC.
 telas.gravar = {
@@ -1576,7 +1680,13 @@ telas.gravar = {
     msg("✓ Etiqueta gravada", "ok", false);
   },
 };
-window.resultadoGravacao = (json) => { try { telas.gravar.resultado(JSON.parse(json)); } catch {} };
+// Resultado da gravação: vai para a tela que pediu (Gravar ou Leitor do PC)
+window.resultadoGravacao = (json) => {
+  try {
+    const r = JSON.parse(json);
+    if (telaAtual === "remoto") telas.remoto.resultadoGravacao(r); else telas.gravar.resultado(r);
+  } catch {}
+};
 
 // PIN da Config: popup igual ao do AppCenter (teclado numérico próprio; o teclado físico também digita)
 let pin = "";

@@ -66,6 +66,7 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | PC | **Locais**: cadastro dos locais de estoque (armazéns), com nome e descrição. O **Local-01** vem pronto e é o padrão |
 | PC | **Produtos**: cadastro (SKU, descrição, EAN, unidade, mínimo) |
 | PC | **Ordens de recebimento**: produto e quantidade esperada; acompanha as leituras do coletor ao vivo e finaliza |
+| PC | **Leitor remoto**: usa o leitor RFID do coletor pelo PC, via Wi-Fi. **A leitura é disparada pelo PC** (*Ler 3 s*, *Ler até parar*, *Parar*, com a potência escolhida) e as etiquetas aparecem ao vivo com a situação no estoque (nova, em estoque com item e local, baixada). Dali mesmo: **Gravar etiqueta** (o código digitado/bipado no PC vira o EPC da etiqueta encostada no coletor), **Entrada** das etiquetas novas e **Baixa** das que estão no local escolhido. No coletor, deixe aberta a tela **Leitor do PC** (fora do cabo USB) |
 | PC | **Baixa** (com o EPC ou por quantidade, escolhendo o local), **Inventário** e **Histórico** (com **Relatório PDF** dos movimentos filtrados) |
 | Coletor | **Recebimento**: escolhe a ordem e o item, lê as etiquetas (cada uma vai na hora para o servidor) |
 | Coletor | **Entrada** sem ordem: produto da lista, etiquetas RFID ou quantidade |
@@ -75,12 +76,20 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 | Coletor | **Gravar** (regravar etiqueta): bipe um código de barras (ou digite) e ele fica no campo; encoste o coletor na etiqueta e toque em **Gravar**: o código vira o novo EPC da etiqueta. Grava com o tamanho do código quando a etiqueta aceita (completando com 0 à esquerda até múltiplo de 4); senão, com 24 dígitos. Se a etiqueta estava cadastrada, o cadastro passa a usar o EPC novo |
 | Coletor | **Ler etiqueta**: só para verificação: aperte o gatilho e veja o EPC de cada etiqueta lida. Ao soltar o gatilho aparecem os detalhes: tipo (**UHF RFID EPC Gen2, 860–960 MHz**), a frequência em que o leitor está operando (região e canais), o tamanho do EPC gravado, o **chip** (fabricante e modelo, pelo TID) e a **memória** do chip (EPC máximo, área de usuário e TID, em bits e bytes). Nada é gravado, baixado nem enviado ao sistema |
+| Coletor | **Leitor do PC**: o coletor vira o leitor/gravador do PC. Com esta tela aberta, ele recebe os comandos do PC (ler, parar, gravar), executa no RFID e devolve as leituras; a tela fica sempre ligada. O gatilho também lê |
 | Coletor | **Config** (botão **⚙ no topo**, protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar, Ler etiqueta e Gravar, e servidor (procurar na rede ou digitar) |
 
 **Modo local (sem servidor)**: **Ler etiqueta** e **Gravar** funcionam só com o coletor. O APK leva uma cópia da
 tela do coletor; se o servidor do PC não responder (em 2 s), o app abre essa cópia com o menu só dessas duas
 funções (e a Config). O botão **Conectar ao servidor** volta ao normal. Gravando sem servidor, o cadastro do estoque
 não é atualizado (a tela avisa).
+
+**Leitor remoto (PC ↔ coletor)**: o servidor faz a ponte, e o PC não precisa conhecer o IP do coletor.
+O PC manda o comando (`POST /api/remoto/comando`); o coletor, na tela *Leitor do PC*, pergunta a cada 0,4 s por
+comandos novos (`GET /api/remoto/comandos`), liga o leitor sem o gatilho (`ColetorApp.lerContinuo`) ou grava
+(`ColetorApp.gravarEtiqueta`) e devolve as leituras (`POST /api/remoto/leituras`) e os resultados
+(`POST /api/remoto/evento`). O PC acompanha a cada 0,6 s (`GET /api/remoto/estado`). Fica tudo em memória no
+servidor (`server/app/remoto.py`): é o estado de uma bancada, um coletor por vez.
 
 **Locais de estoque**: tudo que entra (ordem de recebimento ou entrada) vai para o **Local-01**. Quem não usa
 outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* e leve os itens pela tela
@@ -136,6 +145,7 @@ Testes automáticos: `pip install -r requirements-dev.txt` e depois `pytest`.
 | `server/app/estoque.py` | **Regras**: entrada, baixa (por etiqueta e por quantidade), locais e mover itens, inventário, ordens de recebimento |
 | `server/app/main.py` | Rotas da API (`/api/...`) usadas pelo PC e pelo coletor |
 | `server/app/relatorios.py` | Relatórios em PDF (estoque por local e histórico) |
+| `server/app/remoto.py` | Leitor remoto: fila de comandos do PC para o coletor, leituras e eventos |
 | `server/app/static/index.html` | Tela web (HTML + JavaScript puro) |
 | `server/app/static/m.html` | Telas do coletor (abre em `/m`, dentro do app Coletor WMS) |
 | `server/wms_servidor.py` | Inicia o servidor e abre o navegador (vira o `WMS-Servidor.exe`) |
@@ -390,6 +400,8 @@ O `gradlew assembleDebug` compila os dois apps (Coletor WMS e AppCenter).
 | Tela → app | `ColetorApp.potencia(%)` | potência da antena |
 | Tela → app | `ColetorApp.localizar(epc)` / `procurar(true/false)` | Localizar: escolhe a etiqueta / procura sem o gatilho |
 | Tela → app | `ColetorApp.gravarEtiqueta(código, potência)` | Gravar: regrava o EPC da etiqueta perto da antena |
+| Tela → app | `ColetorApp.lerContinuo(true/false)` | Leitor do PC: liga/desliga a leitura sem o gatilho (o PC comanda) |
+| Tela → app | `ColetorApp.manterTelaLigada(true/false)` | Leitor do PC: tela sempre ligada (apagada, o Android para o leitor) |
 | App → tela | `resultadoGravacao(json)` | Gravar: gravou ou não, EPC antigo e novo |
 | Tela → app | `ColetorApp.servidor()` | abre o popup do endereço do servidor |
 
