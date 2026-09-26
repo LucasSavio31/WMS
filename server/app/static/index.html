@@ -1365,12 +1365,19 @@ $("rmGravar").addEventListener("click", (ev) => executar(ev.currentTarget, async
   const v = $("rmCodigo").value.trim().toUpperCase();
   if (!/^[0-9A-F]{1,24}$/.test(v)) throw new Error("O código tem que ter até 24 caracteres, só números e letras de A a F");
   await comandoRemoto({ acao: "gravar", texto: v, potencia: Number($("rmPotGrav").value) });
-  $("rmGravResultado").textContent = "Enviado ao coletor: encoste o coletor na etiqueta…";
+  avisoGravRemoto("Enviado ao coletor: encoste o coletor na etiqueta…");
 }));
 $("rmBipar").addEventListener("click", (ev) => executar(ev.currentTarget, async () => {
   await comandoRemoto({ acao: "bipar" });
-  $("rmGravResultado").textContent = "Aponte o coletor para o código de barras…";
+  avisoGravRemoto("Aponte o coletor para o código de barras…");
 }).then(focarCodigoRemoto));
+/** Mensagem do card Gravar etiqueta: some sozinha em 3 s. */
+let timerGravRemoto;
+function avisoGravRemoto(html) {
+  $("rmGravResultado").innerHTML = html;
+  clearTimeout(timerGravRemoto);
+  timerGravRemoto = setTimeout(() => { $("rmGravResultado").innerHTML = ""; }, 3000);
+}
 /** Cursor no campo "Código a gravar", no fim do texto (Enter grava direto). */
 function focarCodigoRemoto() {
   const c = $("rmCodigo");
@@ -1381,18 +1388,18 @@ function codigoRemoto(d) {
   if (d.erro) return toast(d.erro, "erro");
   $("rmCodigo").value = d.codigo;
   focarCodigoRemoto();
-  $("rmGravResultado").innerHTML = `Código lido no coletor: <b class="mono">${esc(d.codigo)}</b> · Enter ou Gravar para gravar`;
+  avisoGravRemoto(`Código lido no coletor: <b class="mono">${esc(d.codigo)}</b> · Enter ou Gravar para gravar`);
   toast("Código lido: " + d.codigo);
 }
 $("rmCodigo").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("rmGravar").click(); } });
 function resultadoGravacaoRemota(r) {
   if (r.ok) {
-    $("rmGravResultado").innerHTML = `<span class="selo sucesso">Gravado</span> <span class="mono">${esc(r.antigo)}</span> → <b class="mono">${esc(r.novo)}</b>` +
-      (r.cadastro ? ` · cadastro de ${esc(r.cadastro)} atualizado` : "");
+    avisoGravRemoto(`<span class="selo sucesso">Gravado</span> <span class="mono">${esc(r.antigo)}</span> → <b class="mono">${esc(r.novo)}</b>` +
+      (r.cadastro ? ` · cadastro de ${esc(r.cadastro)} atualizado` : ""));
     toast(`Etiqueta gravada: ${r.novo}`);
     $("rmCodigo").value = "";
   } else {
-    $("rmGravResultado").innerHTML = `<span class="selo perigo">Não gravou</span> ${esc(r.mensagem || "")}`;
+    avisoGravRemoto(`<span class="selo perigo">Não gravou</span> ${esc(r.mensagem || "")}`);
     toast("Não gravou: " + (r.mensagem || ""), "erro");
   }
 }

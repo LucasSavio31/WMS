@@ -1511,13 +1511,10 @@ telas.remoto = {
   titulo: "Leitor do PC",
   abrir() {
     this.apos = null; this.enviadas = new Set(); this.buffer = []; this.n = 0;
-    tela.innerHTML = `<div class="card" style="text-align:center"><div style="font-size:48px;line-height:1.1">🖥️</div>
-        <h2 style="justify-content:center">Leitor do PC</h2>
-        <div id="rmEstado" style="font-size:17px;font-weight:600">Conectando ao servidor…</div></div>
-      <div class="card"><h2>Etiquetas lidas <span class="dir"><span class="contador" id="rmCont">0</span></span></h2>
-        <div class="mono fraco" id="rmUltima" style="word-break:break-all">—</div></div>
-      <p class="fraco" style="text-align:center;padding:0 12px">Deixe esta tela aberta: o PC (menu <b>Leitor remoto</b>) manda ler e gravar.
-        O gatilho também lê.</p>`;
+    // Tela limpa: só mostra se está conectado ao PC (quem acompanha as leituras é o PC)
+    tela.innerHTML = `<div class="card" style="text-align:center;margin-top:40px;padding:28px 12px">
+        <div style="font-size:64px;line-height:1.1">🖥️</div>
+        <div id="rmEstado" style="font-size:22px;font-weight:700;margin-top:10px">Conectando…</div></div>`;
     try { app?.manterTelaLigada?.(true); } catch {}
     clearInterval(this.timer);
     this.timer = setInterval(() => this.buscar(), 400);
@@ -1529,7 +1526,14 @@ telas.remoto = {
     this.lerLigado(false);
     try { app?.manterTelaLigada?.(false); } catch {}
   },
-  estado(t) { if ($("rmEstado")) $("rmEstado").textContent = t; },
+  /** Só a conexão aparece na tela (as outras mensagens são ignoradas). */
+  estado(t) {
+    const conexao = /conex|Pronto|Atualize/i.test(t);
+    if (!conexao || !$("rmEstado")) return;
+    const ok = /Pronto/i.test(t);
+    $("rmEstado").textContent = ok ? "✓ Conectado ao PC" : t;
+    $("rmEstado").style.color = ok ? "var(--sucesso)" : "var(--alerta)";
+  },
   lerLigado(ligar) { try { app?.lerContinuo?.(ligar); } catch {} },
   async buscar() {
     if (this.buscando) return;
@@ -1563,7 +1567,6 @@ telas.remoto = {
       this.parar();
     } else if (c.acao === "limpar") {
       this.enviadas.clear(); this.n = 0;
-      if ($("rmCont")) { $("rmCont").textContent = "0"; $("rmUltima").textContent = "—"; }
     } else if (c.acao === "bipar") {
       clearTimeout(this.fimLeitura);
       this.lerLigado(false);
@@ -1608,12 +1611,7 @@ telas.remoto = {
   },
   rfid(epc) {
     // Toda leitura vai para o PC (a coluna Vezes vai subindo); bipe só na primeira vez de cada etiqueta
-    if (!this.enviadas.has(epc)) {
-      this.enviadas.add(epc); this.n++;
-      bipe("ok");
-      if ($("rmCont")) $("rmCont").textContent = this.n;
-    }
-    if ($("rmUltima")) $("rmUltima").textContent = epc;
+    if (!this.enviadas.has(epc)) { this.enviadas.add(epc); this.n++; bipe("ok"); }
     this.buffer.push(epc);
     // Envia a cada 0,25 s enquanto houver leituras (não espera o leitor parar): o PC vê ao vivo
     if (!this.timerEnvio) this.timerEnvio = setTimeout(() => this.enviar(), 250);
