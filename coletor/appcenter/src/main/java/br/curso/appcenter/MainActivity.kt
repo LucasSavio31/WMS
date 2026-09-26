@@ -244,11 +244,14 @@ class MainActivity : Activity() {
         }
         // Teclado físico do coletor também digita o PIN
         d.setOnKeyListener { _, codigo, ev ->
+            Log.i(Quiosque.TAG, "PIN: tecla $codigo ${KeyEvent.keyCodeToString(codigo)} ${if (ev.action == KeyEvent.ACTION_DOWN) "apertada" else "solta"}")
             if (ev.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (codigo) {
                 in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> { tecla((codigo - KeyEvent.KEYCODE_0).toString()); true }
+                in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 -> { tecla((codigo - KeyEvent.KEYCODE_NUMPAD_0).toString()); true }
                 KeyEvent.KEYCODE_DEL -> { tecla("⌫"); true }
-                KeyEvent.KEYCODE_ENTER -> { tecla("OK"); true }
+                // Enter do teclado físico do coletor confirma (o código varia: ENTER, NUMPAD_ENTER ou DPAD_CENTER)
+                KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_DPAD_CENTER -> { tecla("OK"); true }
                 else -> false
             }
         }

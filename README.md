@@ -75,7 +75,7 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 | Coletor | **Gravar** (regravar etiqueta): bipe um código de barras (ou digite) e ele fica no campo; encoste o coletor na etiqueta e toque em **Gravar**: o código vira o novo EPC da etiqueta. Grava com o tamanho do código quando a etiqueta aceita (completando com 0 à esquerda até múltiplo de 4); senão, com 24 dígitos. Se a etiqueta estava cadastrada, o cadastro passa a usar o EPC novo |
 | Coletor | **Ler etiqueta**: só para verificação: aperte o gatilho e veja o EPC de cada etiqueta lida. Ao soltar o gatilho aparecem os detalhes: tipo (**UHF RFID EPC Gen2, 860–960 MHz**), a frequência em que o leitor está operando (região e canais), o tamanho do EPC gravado, o **chip** (fabricante e modelo, pelo TID) e a **memória** do chip (EPC máximo, área de usuário e TID, em bits e bytes). Nada é gravado, baixado nem enviado ao sistema |
-| Coletor | **Config** (botão **⚙ no topo**, protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar e Gravar, e servidor (procurar na rede ou digitar) |
+| Coletor | **Config** (botão **⚙ no topo**, protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar, Ler etiqueta e Gravar, e servidor (procurar na rede ou digitar) |
 
 **Modo local (sem servidor)**: **Ler etiqueta** e **Gravar** funcionam só com o coletor. O APK leva uma cópia da
 tela do coletor; se o servidor do PC não responder (em 2 s), o app abre essa cópia com o menu só dessas duas
@@ -303,7 +303,7 @@ como o AppCenter dos coletores Zebra MC9090: fundo branco e só os ícones dos a
 |---|---|
 | **Só os apps liberados** | Tela branca com a grade de ícones dos apps permitidos. Tocar abre o app; o Voltar na primeira tela do app volta ao AppCenter. |
 | **Travamento de verdade** | Modo *lock task* do Android: sem Home, sem Recentes, sem barra de notificações e sem a seta Voltar na tela do AppCenter. Um app fora da lista não abre nem por atalho. Hora, bateria e Wi-Fi continuam visíveis, e o menu de desligar funciona. |
-| **Área do administrador** | **5 toques** na tela (em até 3 s) abrem o popup do **PIN 1234**, com teclado numérico na tela (o teclado físico também digita). Cancelar fecha o popup. |
+| **Área do administrador** | **5 toques** na tela (em até 3 s) abrem o popup do **PIN 1234**, com teclado numérico na tela. O teclado físico também digita, e o **Enter** do coletor confirma. Cancelar fecha o popup. |
 | **Escolher os apps** | Na área do administrador, a lista de todos os apps instalados com caixinhas: marcar/desmarcar define o que aparece no AppCenter (e o que pode abrir). |
 | **← Sair do admin** | Volta à tela inicial do AppCenter (deslogar). |
 | **Sair do modo quiosque** | Libera o Android completo para o administrador (a Home leva ao launcher normal). O quiosque volta ao **reiniciar** o coletor ou ao tocar no ícone **AppCenter** no launcher do Android. |

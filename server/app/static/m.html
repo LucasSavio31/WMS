@@ -279,9 +279,9 @@ async function api(metodo, url, corpo) {
 // ---- retorno para o operador: mensagem, bipe e vibração
 // Configurações do coletor (tela Config), guardadas no próprio aparelho
 // Potência da antena (%) por tipo de tela: Recebimento (ordem e entrada), Baixa e Localizar
-const cfg = { volume: 100, potRecebimento: 100, potBaixa: 100, potLocalizar: 100, potGravar: 30, localBaixa: null };
+const cfg = { volume: 100, potRecebimento: 100, potBaixa: 100, potLocalizar: 100, potLer: 100, potGravar: 30, localBaixa: null };
 try { Object.assign(cfg, JSON.parse(localStorage.getItem("coletor.cfg") || "{}")); } catch {}
-const POTENCIA_DA_TELA = { entrada: "potRecebimento", avulsa: "potRecebimento", baixa: "potBaixa", localizar: "potLocalizar" };
+const POTENCIA_DA_TELA = { entrada: "potRecebimento", avulsa: "potRecebimento", baixa: "potBaixa", localizar: "potLocalizar", ler: "potLer" };
 const potenciaDaTela = (nome) => cfg[POTENCIA_DA_TELA[nome]] || 100;   // outras telas (inventário): 100%
 function salvarCfg() { try { localStorage.setItem("coletor.cfg", JSON.stringify(cfg)); } catch {} }
 // No app, o volume é o volume de mídia do próprio coletor; no navegador, o volume do bipe.
@@ -1593,7 +1593,7 @@ telas.config = {
         <div class="botoes" style="margin-top:8px"><button class="b" data-acao="testar">🔊 Testar bipe</button></div>
         ${app ? '<p class="fraco" style="margin:6px 0 0">Muda o volume de mídia do coletor.</p>' : ""}</div>
       <div class="card"><h2>Potência da antena RFID</h2>
-        ${[["potRecebimento", "Recebimento e entrada"], ["potBaixa", "Baixa"], ["potLocalizar", "Localizar etiqueta"], ["potGravar", "Gravar etiqueta"]].map(([k, nome]) => `
+        ${[["potRecebimento", "Recebimento e entrada"], ["potBaixa", "Baixa"], ["potLocalizar", "Localizar etiqueta"], ["potLer", "Ler etiqueta"], ["potGravar", "Gravar etiqueta"]].map(([k, nome]) => `
           <div class="potencia"><div>${nome} <span class="dir"><b id="${k}Txt">${cfg[k]}%</b></span></div>
             <input type="range" data-pot="${k}" min="10" max="100" step="10" value="${cfg[k]}" style="padding:0"></div>`).join("")}
         <p class="fraco" style="margin:6px 0 0">100% lê mais longe. Menos potência lê só o que está perto (evita pegar mercadoria vizinha).</p></div>
