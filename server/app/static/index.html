@@ -106,7 +106,7 @@
   .botoes { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
   button, .botao { font: inherit; font-weight: 600; border: 1px solid var(--borda); background: var(--painel); color: var(--texto); border-radius: 7px; padding: 7px 14px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   button:hover, .botao:hover { background: var(--painel-2); }
-  button:disabled { opacity: .55; cursor: wait; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
   button.primario { background: var(--primaria); border-color: var(--primaria); color: var(--primaria-texto); }
   button.perigo { background: var(--perigo); border-color: var(--perigo); color: #fff; }
   button.sucesso { background: var(--sucesso); border-color: var(--sucesso); color: #fff; }
@@ -444,7 +444,7 @@
             <h2>Entrada das etiquetas lidas</h2>
             <p class="ajuda">Só as etiquetas novas (as que já estão em estoque são ignoradas). Entram no Local-01.</p>
             <label class="campo"><span>Produto</span><select id="rmProduto" data-produtos="ativos"></select></label>
-            <div class="botoes"><button class="sucesso" id="rmEntrar" disabled>Dar entrada</button></div>
+            <div class="botoes"><button class="sucesso" id="rmEntrar">Dar entrada nas novas (0)</button></div>
           </div>
           <div class="card">
             <h2>Baixa das etiquetas lidas</h2>
@@ -453,7 +453,7 @@
               <label class="campo"><span>Local</span><select id="rmLocal" data-enderecos></select></label>
               <label class="campo"><span>Motivo</span><select id="rmMotivo" data-motivos></select></label>
             </div>
-            <div class="botoes"><button class="perigo" id="rmBaixar" disabled>Baixar</button></div>
+            <div class="botoes"><button class="perigo" id="rmBaixar">Baixar as deste local (0)</button></div>
           </div>
         </div>
       </section>
@@ -1352,9 +1352,19 @@ const remotoNoLocal = () => remoto.leituras.filter((l) => l.status === "ATIVA" &
 function desenharRemoto() {
   $("tabRemoto").innerHTML = remoto.leituras.map((l) => `<tr><td class="mono">${esc(l.epc)}</td><td>${situacaoRemota(l)}</td>
       <td class="num">${l.vezes}</td></tr>`).join("") || vazio(3, "Nenhuma etiqueta lida. Clique em Ler.");
+  // Local da baixa: mostra quantas etiquetas lidas estão em cada local e escolhe sozinho onde elas estão
+  const porLocal = {};
+  remoto.leituras.filter((l) => l.status === "ATIVA").forEach((l) => { porLocal[l.endereco_id] = (porLocal[l.endereco_id] || 0) + 1; });
+  [...$("rmLocal").options].forEach((o) => {
+    o.textContent = o.textContent.replace(/ \(\d+ lida\(s\)\)$/, "") + (porLocal[o.value] ? ` (${porLocal[o.value]} lida(s))` : "");
+  });
+  if (!porLocal[$("rmLocal").value]) {
+    const melhor = Object.entries(porLocal).sort((a, b) => b[1] - a[1])[0];
+    if (melhor) $("rmLocal").value = melhor[0];
+  }
   const n = remotoNovas().length, b = remotoNoLocal().length;
-  $("rmEntrar").textContent = `Dar entrada nas novas (${n})`; $("rmEntrar").disabled = !n;
-  $("rmBaixar").textContent = `Baixar as deste local (${b})`; $("rmBaixar").disabled = !b;
+  $("rmEntrar").textContent = `Dar entrada nas novas (${n})`;
+  $("rmBaixar").textContent = `Baixar as deste local (${b})`;
 }
 const comandoRemoto = (corpo) => api("POST", "/api/remoto/comando", corpo);
 $("rmLer").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "ler", ms: 0, potencia: Number($("rmPot").value) })));
@@ -1404,9 +1414,10 @@ function resultadoGravacaoRemota(r) {
   }
 }
 $("rmEntrar").addEventListener("click", async (ev) => {
-  const p = produtoPorId($("rmProduto").value);
-  if (!p) return toast("Escolha o produto", "erro");
   const epcs = remotoNovas().map((l) => l.epc);
+  if (!epcs.length) return toast("Nenhuma etiqueta nova na lista: as lidas já estão em estoque (ou leia primeiro)", "alerta");
+  const p = produtoPorId($("rmProduto").value);
+  if (!p) { $("rmProduto").focus(); return toast("Escolha o produto das etiquetas", "alerta"); }
   if (!(await confirmar("Dar entrada", `Dar entrada de ${epcs.length} etiqueta(s) em ${p.sku} · ${p.descricao} (Local-01)?`, "Dar entrada", "sucesso"))) return;
   executar(ev.target, async () => {
     const r = await api("POST", "/api/entradas", { produto_id: p.id, epcs, origem: "PC", meio: "RFID" });
@@ -1416,7 +1427,12 @@ $("rmEntrar").addEventListener("click", async (ev) => {
 });
 $("rmBaixar").addEventListener("click", async (ev) => {
   const epcs = remotoNoLocal().map((l) => l.epc);
-  const local = $("rmLocal").selectedOptions[0]?.text || "";
+  if (!epcs.length) {
+    const emEstoque = remoto.leituras.filter((l) => l.status === "ATIVA");
+    return toast(emEstoque.length ? "Nenhuma etiqueta lida está neste local: escolha o local onde elas estão"
+      : "Nenhuma etiqueta lida está em estoque (as novas precisam de entrada antes)", "alerta");
+  }
+  const local = ($("rmLocal").selectedOptions[0]?.text || "").replace(/ \(\d+ lida\(s\)\)$/, "");
   if (!(await confirmar("Confirmar baixa", `Baixar ${epcs.length} etiqueta(s) de ${local}\nMotivo: ${$("rmMotivo").value}`, "Confirmar baixa"))) return;
   executar(ev.target, async () => {
     const r = await api("POST", "/api/baixas", { epcs, motivo: $("rmMotivo").value, endereco_id: Number($("rmLocal").value), origem: "PC", meio: "RFID" });
