@@ -646,12 +646,22 @@ function sinalWifi(ms) {
 }
 // Hora do SERVIDOR (o relógio do coletor pode estar errado), andando com o relógio local
 let diferencaRelogio = 0;
+// Tela nova no servidor: recarrega sozinho (só no menu ou no Leitor do PC parado, para não perder nada)
+let versaoTela = null;
+function atualizarTelaSeMudou(tela) {
+  if (!tela) return;
+  if (versaoTela === null) { versaoTela = tela; return; }
+  if (tela === versaoTela) return;
+  const parado = telaAtual === "menu" || (telaAtual === "remoto" && !telas.remoto.lendoPC && !telas.remoto.bipando);
+  if (parado && !document.querySelector("dialog[open]")) location.reload();
+}
 async function medirServidor() {
   if (LOCAL) return mostrarHora();
   const inicio = performance.now();
   try {
     const r = await fetch("/api/status", { cache: "no-store" });
     const s = await r.json();
+    atualizarTelaSeMudou(s.tela);
     const ms = Math.round(performance.now() - inicio);
     diferencaRelogio = new Date(s.data_hora.replace(" ", "T")).getTime() + ms / 2 - Date.now();
     sinalWifi(ms);

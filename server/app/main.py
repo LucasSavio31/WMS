@@ -103,7 +103,9 @@ def status(request: Request):
     """O coletor usa para testar a conexão e para achar o servidor na rede ("servidor": "Mini WMS")."""
     porta = request.url.port or 8000
     return {"ok": True, "servidor": "Mini WMS", "data_hora": db.agora(), "motivos": MOTIVOS_BAIXA,
-            "coletor": f"http://{db.ip_da_rede()}:{porta}", "banco": os.path.abspath(db.DB_PATH), "aviso": db.AVISO}
+            "coletor": f"http://{db.ip_da_rede()}:{porta}", "banco": os.path.abspath(db.DB_PATH), "aviso": db.AVISO,
+            # versão da tela do coletor: quando muda, o coletor recarrega sozinho
+            "tela": int(os.path.getmtime(os.path.join(STATIC, "m.html")))}
 
 
 # ================================================================ painel
