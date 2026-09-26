@@ -829,7 +829,12 @@ telas.menu = {
 // ======================================================================= ENTRADA AVULSA (sem ordem)
 telas.avulsa = {
   titulo: "Entrada",
-  abrir() { this.produto = null; this.tags = new Map(); this.desenhar(); },
+  abrir() {
+    this.produto = null; this.tags = new Map();
+    this.emEstoque = new Set();    // etiquetas já em estoque: ignoradas em silêncio (não aparecem, não bipam)
+    this.conferindo = new Set();   // consultando no servidor (não consulta a mesma duas vezes)
+    this.desenhar();
+  },
   desenhar() {
     const p = this.produto;
     definirGatilho(p ? "rfid" : "barras");   // escolhe o produto (lista ou código de barras), depois lê as etiquetas
@@ -872,14 +877,23 @@ telas.avulsa = {
       if (ativos.length !== 1) return msg("Escolha o produto na lista (ou bipe o código de barras)", "info");
       await this.codigo(ativos[0].sku);   // só existe um produto: já escolhe
     }
-    if (this.tags.has(epc)) return;
-    const t = { epc, ok: true, info: "nova" };
-    this.tags.set(epc, t); this.desenharTags(); bipe("ok");
+    // Já na lista, já sabida em estoque ou sendo conferida: a leitura repetida não faz nada
+    if (this.tags.has(epc) || this.emEstoque.has(epc) || this.conferindo.has(epc)) return;
+    this.conferindo.add(epc);
+    let info = "nova";
     try {
       const tag = await api("GET", "/api/tags/" + encodeURIComponent(epc));
-      if (tag.status === "ATIVA") { this.tags.delete(epc); this.ignoradas = (this.ignoradas || 0) + 1; }   // já em estoque: ignorada
-      else t.info = `reaproveitada (era ${tag.sku})`;
-    } catch { /* tag nunca usada: nova */ }
+      if (tag.status === "ATIVA") { this.emEstoque.add(epc); return; }   // já em estoque: ignorada em silêncio
+      info = `reaproveitada (era ${tag.sku})`;
+    } catch (e) {
+      if (/conex|Wi-Fi/i.test(e.message)) { msg(e.message, "erro"); return; }   // sem rede: pode ler de novo
+      /* etiqueta nunca cadastrada: nova */
+    } finally {
+      this.conferindo.delete(epc);
+    }
+    if (this.tags.has(epc) || !this.produto) return;
+    this.tags.set(epc, { epc, ok: true, info });   // só a etiqueta nova aparece e bipa
+    bipe("ok");
     if (telaAtual === "avulsa") this.desenharTags();
   },
   removerTag(_b, epc) { this.tags.delete(epc); this.desenharTags(); },
@@ -925,6 +939,7 @@ telas.entrada = {
     } catch (e) { msg(e.message, "erro"); }
   },
   async abrirOrdem(_b, id) {
+    if (this.ordem?.recebimento.id !== Number(id)) this.enviadas = new Set();   // outra ordem: começa do zero
     await executar(null, async () => {
       const d = await api("GET", "/api/recebimentos/" + id);
       this.ordem = d; this.confirmando = false;
@@ -964,7 +979,9 @@ telas.entrada = {
       ${faltas.length ? `<p style="margin:0 0 8px;color:var(--alerta)"><b>Divergências:</b><br>${faltas.map((i) => `${esc(i.sku)}${loteTxt(i.lote)}: ${num(i.lidas)} de ${num(i.prevista)}`).join("<br>")}</p>` : ""}
       <div class="botoes"><button class="b" data-acao="cancelarFinalizar">Voltar</button><button class="b sucesso" data-acao="finalizar" id="rcFinalizar">Confirmar</button></div></div>`;
   },
-  escolherItem(_b, id) { this.itemId = Number(id); this.confirmando = false; this.desenhar(); msg(`Item ${this.item().sku}${loteTxt(this.item().lote)}: leia as etiquetas`, "info", false); },
+  escolherItem(_b, id) {
+    this.enviadas = new Set();   // outro item: etiquetas recusadas por "item completo" podem valer para ele
+    this.itemId = Number(id); this.confirmando = false; this.desenhar(); msg(`Item ${this.item().sku}${loteTxt(this.item().lote)}: leia as etiquetas`, "info", false); },
   codigo(c) {
     if (!this.ordem) return msg("Abra uma ordem de recebimento", "alerta");
     const doProduto = this.ordem.itens.filter((i) => i.ean === c || i.sku.toUpperCase() === c);
@@ -980,6 +997,10 @@ telas.entrada = {
       if (!falta) return;                     // tudo completo: leitura ignorada
       this.itemId = falta.id; this.desenhar();
     }
+    // já mandada nesta ordem (aceita ou recusada, ex.: já em estoque): não manda de novo
+    this.enviadas ||= new Set();
+    if (this.enviadas.has(epc)) return;
+    this.enviadas.add(epc);
     // junta as leituras de ~0,25 s e manda de uma vez (online, sem esperar o operador)
     this.buffer.push(epc);
     clearTimeout(this.timer);
@@ -992,10 +1013,14 @@ telas.entrada = {
     try {
       const r = await api("POST", `/api/recebimentos/${rec}/leituras`, { item_id: itemId, epcs, origem: "COLETOR", meio: "RFID" });
       // etiqueta já em estoque, de outra ordem ou a mais: ignorada, o operador segue lendo
-      const novas = r.tags.filter((t) => t.ok && !t.repetida).length, ignoradas = r.tags.filter((t) => !t.ok).length;
-      if (novas) msg(`✓ ${novas} etiqueta(s) · ${r.sku} ${num(r.lidas)}/${num(r.prevista)}` + (ignoradas ? ` · ${ignoradas} ignorada(s)` : ""));
+      const novas = r.tags.filter((t) => t.ok && !t.repetida).length;
+      if (!novas) return;   // só etiquetas já em estoque/já lidas: segue em silêncio
+      msg(`✓ ${novas} etiqueta(s) · ${r.sku} ${num(r.lidas)}/${num(r.prevista)}`);
       if (telaAtual === "entrada" && this.ordem?.recebimento.id === rec) await this.abrirOrdem(null, rec);
-    } catch (e) { msg(e.message, "erro"); }
+    } catch (e) {
+      epcs.forEach((x) => this.enviadas?.delete(x));   // falhou a rede: pode ler de novo
+      msg(e.message, "erro");
+    }
   },
   async adicionarQtd() {
     const q = numero($("rcQtd")?.value);
