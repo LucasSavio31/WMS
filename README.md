@@ -25,7 +25,7 @@ separados no coletor.
 |---|---|---|
 | **Servidor** (`server/`) | O "cérebro": guarda o estoque, aplica todas as regras (entrada, baixa, locais, inventário, ordens de recebimento), grava cada movimento com data/hora e gera os relatórios. Serve as telas do PC e do coletor e a API que o coletor usa. | Python 3.11, **FastAPI** (API HTTP/JSON), **Uvicorn** (servidor web), **Pydantic** (validação dos dados), **SQLite** em modo WAL (banco em um arquivo), **fpdf2** (relatórios PDF), **PyInstaller** (gera o `WMS-Servidor.exe`), **pytest** (testes automáticos) |
 | **Tela do PC** (`server/app/static/index.html`) | Sistema de estoque no navegador: Dashboard, Estoque (mover entre locais), Locais, Produtos, Ordens de recebimento, Baixa, Inventário e Histórico. Atualiza sozinha a cada 5 s (as leituras do coletor aparecem na hora). | HTML, CSS e **JavaScript puro** (sem framework), `fetch` para a API, tema claro/escuro automático |
-| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta, Gravar etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
+| **Coletor WMS** (`ColetorWMS.apk`, `coletor/app/`) | App de estoque do coletor: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta, Gravar etiqueta, Ler etiqueta e Config. É uma "casca" que mostra as telas do servidor (`/m`) e cuida do hardware: **leitor RFID**, gatilho, código de barras, bipe e LED. Acha o servidor na rede Wi-Fi sozinho. | **Kotlin**, Android **WebView** com ponte JavaScript (`ColetorApp`), **Zebra RFID SDK API3** 2.0.2.82 (o mesmo do 123RFID), **DataWedge** (código de barras) com a API de Intent, Gradle 8 / Android Gradle Plugin 8.5, JDK 17 |
 | **AppCenter** (`AppCenter.apk`, `coletor/appcenter/`) | Tela inicial do coletor em **modo quiosque** (como o AppCenter dos MC9090): fundo branco e só os apps liberados; área do administrador com 5 toques + PIN. Volta sozinho ao ligar o coletor. | **Kotlin**, só o Android (sem bibliotecas), **Device Owner** (`DevicePolicyManager`), modo **Lock Task** do Android, `activity-alias` de tela inicial (HOME), `BootReceiver` |
 
 Os três arquivos prontos (`WMS-Servidor.exe`, `ColetorWMS.apk` e `AppCenter.apk`) são gerados pelo **GitHub Actions**
@@ -74,7 +74,8 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Coletor | **Consulta**: escolhe o local e toca em **Consultar**: aparecem os itens daquele local com a quantidade e as etiquetas RFID vinculadas (toque para ver os EPCs), como no PC |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 | Coletor | **Gravar** (regravar etiqueta): bipe um código de barras (ou digite) e ele fica no campo; encoste o coletor na etiqueta e toque em **Gravar**: o código vira o novo EPC da etiqueta. Grava com o tamanho do código quando a etiqueta aceita (completando com 0 à esquerda até múltiplo de 4); senão, com 24 dígitos. Se a etiqueta estava cadastrada, o cadastro passa a usar o EPC novo |
-| Coletor | **Config** (protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar e Gravar, e servidor (procurar na rede ou digitar) |
+| Coletor | **Ler etiqueta**: só para verificação: aperte o gatilho e veja o EPC de cada etiqueta lida (quantos dígitos e quantas vezes foi lida). Nada é gravado, baixado nem enviado ao sistema |
+| Coletor | **Config** (botão **⚙ no topo**, protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar e Gravar, e servidor (procurar na rede ou digitar) |
 
 **Locais de estoque**: tudo que entra (ordem de recebimento ou entrada) vai para o **Local-01**. Quem não usa
 outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* e leve os itens pela tela
@@ -159,7 +160,8 @@ o navegador não faz sozinho:
 - Tela cheia do app; hora, Wi-Fi e bateria ficam na barra do próprio Android.
 - Em segundo plano, o app solta o leitor RFID (assim o 123RFID e outros apps conseguem usar).
 
-Telas: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta, Gravar etiqueta e Config (com PIN 1234). Como as telas vêm do servidor,
+Telas: Recebimento, Entrada, Baixa, Inventário, Consulta, Localizar etiqueta, Gravar etiqueta e Ler etiqueta; a Config
+(com PIN 1234) abre pelo ⚙ no topo. Como as telas vêm do servidor,
 qualquer melhoria chega ao coletor sem reinstalar o app.
 
 ### Como o RFID funciona no app

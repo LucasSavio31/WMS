@@ -79,7 +79,7 @@
 
   /* Campo invisível de captura do DataWedge (precisa existir e poder ter foco) */
   .captura { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; overflow: hidden; }
-  header #modo, header #teclado { width: 34px; font-size: 18px; border-radius: 8px; }
+  header #modo, header #teclado, header #btConfig { width: 34px; font-size: 18px; border-radius: 8px; }
   .potencia { margin: 8px 0 4px; }
   /* PIN da Config: igual ao do AppCenter (fundo branco, visor com bolinhas, teclado 3x4) */
   dialog.pin { background: #fff; color: #17202b; border: 0; border-radius: 6px; padding: 22px 22px 10px; width: min(400px, 92vw); }
@@ -210,6 +210,7 @@
   <button id="btTelaCheia" aria-label="Tela cheia" title="Tela cheia" hidden>⛶</button>
   <button id="modo" class="rfid" title="O gatilho lê: RFID ou código de barras (toque para trocar)" hidden>📡</button>
   <button id="teclado" title="Abrir o teclado">⌨</button>
+  <button id="btConfig" title="Config">⚙</button>
 </header>
 <!-- Campo invisível que recebe o que o DataWedge "digita" (código de barras). Não remover. -->
 <textarea id="leitura" class="captura" rows="1" inputmode="none" autocomplete="off" autocapitalize="characters"
@@ -788,7 +789,7 @@ telas.menu = {
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
       ${item("consulta", "🔍", "Consulta<br><small class=fraco>estoque por local</small>")}${item("localizar", "🎯", "Localizar etiqueta")}
-      ${item("gravar", "📝", "Gravar<br><small class=fraco>regravar etiqueta</small>")}${item("config", "⚙️", "Config")}
+      ${item("gravar", "📝", "Gravar<br><small class=fraco>regravar etiqueta</small>")}${item("ler", "📡", "Ler etiqueta<br><small class=fraco>mostra o EPC</small>")}
     </div>`;
     try {
       const r = await api("GET", "/api/resumo");
@@ -1358,6 +1359,42 @@ telas.consulta = {
   },
   rfid() {},
   codigo() {},
+};
+
+// ⚙ do topo: abre a Config (pede o PIN)
+$("btConfig").addEventListener("click", (ev) => { ev.stopPropagation(); location.hash = "config"; });
+
+// ======================================================================= LER ETIQUETA
+// Só lê: aperte o gatilho perto das etiquetas e veja o EPC de cada uma.
+telas.ler = {
+  titulo: "Ler etiqueta",
+  abrir() {
+    this.lidas = new Map();   // EPC -> quantas vezes o leitor viu
+    tela.innerHTML = `<div class="card"><p class="fraco" style="margin:0"><b>Só para verificação</b>: aperte o gatilho perto da etiqueta
+        e o EPC aparece aqui. Nada é gravado, baixado nem enviado ao sistema.</p></div>
+      <div class="card"><h2>Etiquetas lidas <span class="dir"><span class="contador" id="lrCont">0</span></span></h2>
+        <ul class="lista" id="lrLista"></ul>
+        <div class="botoes" style="margin-top:8px"><button class="b" data-acao="limpar">Limpar</button></div></div>`;
+    this.desenhar();
+  },
+  rfid(epc) {
+    const vezes = (this.lidas.get(epc) || 0) + 1;
+    this.lidas.delete(epc);        // a última lida vai para o topo da lista
+    this.lidas.set(epc, vezes);
+    if (vezes === 1) bipe("ok");   // bipe só na primeira vez que a etiqueta aparece
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => this.desenhar(), 80);
+  },
+  desenhar() {
+    if (!$("lrLista")) return;
+    $("lrCont").textContent = this.lidas.size;
+    $("lrLista").innerHTML = [...this.lidas].reverse().map(([epc, n]) => `<li>
+        <div class="info"><div class="mono" style="font-size:17px;font-weight:700;word-break:break-all">${esc(epc)}</div>
+          <div class="fraco">${epc.length} dígitos · lida ${n} vez(es)</div></div></li>`).join("")
+      || `<li class="vazio">Nenhuma etiqueta lida ainda</li>`;
+  },
+  limpar() { this.lidas.clear(); this.desenhar(); },
+  codigo(c) { msg("Código de barras: " + c, "info"); },
 };
 
 // ======================================================================= GRAVAR
