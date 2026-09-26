@@ -1615,10 +1615,11 @@ telas.remoto = {
     }
     if ($("rmUltima")) $("rmUltima").textContent = epc;
     this.buffer.push(epc);
-    clearTimeout(this.timerEnvio);
-    this.timerEnvio = setTimeout(() => this.enviar(), 250);
+    // Envia a cada 0,25 s enquanto houver leituras (não espera o leitor parar): o PC vê ao vivo
+    if (!this.timerEnvio) this.timerEnvio = setTimeout(() => this.enviar(), 250);
   },
   async enviar() {
+    this.timerEnvio = null;
     const epcs = this.buffer; this.buffer = [];
     if (!epcs.length) return;
     try { await api("POST", "/api/remoto/leituras", { epcs }); }
