@@ -453,7 +453,7 @@ def test_leitor_remoto(api):
     assert e["online"] is True and e["lendo"] is True
     por_epc = {l["epc"]: l for l in e["leituras"]}
     assert por_epc["EST1"]["status"] == "ATIVA" and por_epc["EST1"]["sku"] == "LEITE"
-    assert por_epc["NOVA9"]["status"] is None and por_epc["NOVA9"]["vezes"] == 2
+    assert por_epc["NOVA9"]["status"] is None and por_epc["NOVA9"]["vezes"] == 3   # cada leitura conta
     # gravar: valida o código; o coletor devolve o resultado como evento
     assert api.post("/api/remoto/comando", json={"acao": "gravar", "texto": "XYZ"}).status_code == 400
     api.post("/api/remoto/comando", json={"acao": "gravar", "texto": "abc123"})

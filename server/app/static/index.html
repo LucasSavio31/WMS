@@ -417,8 +417,7 @@
               <select id="rmPot" title="Potência da leitura" style="width:auto">
                 <option value="100">Potência 100%</option><option value="75">75%</option><option value="50">50%</option>
                 <option value="30">30%</option><option value="15">15%</option></select>
-              <button class="primario" id="rmLer3">▶ Ler 3 s</button>
-              <button id="rmLer">▶ Ler até parar</button>
+              <button class="primario" id="rmLer">▶ Ler até parar</button>
               <button id="rmParar">■ Parar</button>
               <button id="rmLimpar">Limpar lista</button>
             </span></div>
@@ -432,6 +431,7 @@
             (até 24 caracteres, números e letras A–F; menor que 24 é completado com 0 à esquerda).</p>
           <div class="barra">
             <input id="rmCodigo" class="mono" style="max-width:320px" placeholder="Código a gravar" autocomplete="off">
+            <button id="rmBipar" title="Aciona o leitor de código de barras do coletor: o código lido vem para este campo">▮▮ Ler código no coletor</button>
             <select id="rmPotGrav" title="Potência da gravação" style="width:auto">
               <option value="30">Potência 30%</option><option value="15">15%</option><option value="50">50%</option>
               <option value="100">100%</option></select>
@@ -1334,10 +1334,11 @@ async function consultarRemoto() {
   $("rmStatus").innerHTML = e.online
     ? `<span class="selo sucesso">Coletor conectado</span> ${e.lendo ? '<span class="selo info">lendo…</span>' : ""}`
     : `<span class="selo perigo">Coletor não conectado</span> <span class="fraco">No coletor, abra a tela <b>Leitor do PC</b> (fora do cabo USB).</span>`;
-  ["rmLer3", "rmLer", "rmParar", "rmGravar"].forEach((id) => { $(id).disabled = !e.online; });
+  ["rmLer", "rmParar", "rmGravar", "rmBipar"].forEach((id) => { $(id).disabled = !e.online; });
   for (const ev of e.eventos) {
     remotoEventos = ev.id;
     if (ev.tipo === "gravacao") resultadoGravacaoRemota(ev.dados);
+    if (ev.tipo === "codigo") codigoRemoto(ev.dados);
   }
   if (e.versao !== remotoVersao) { remotoVersao = e.versao; remoto.leituras = e.leituras; desenharRemoto(); }
 }
@@ -1356,7 +1357,6 @@ function desenharRemoto() {
   $("rmBaixar").textContent = `Baixar as deste local (${b})`; $("rmBaixar").disabled = !b;
 }
 const comandoRemoto = (corpo) => api("POST", "/api/remoto/comando", corpo);
-$("rmLer3").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "ler", ms: 3000, potencia: Number($("rmPot").value) })));
 $("rmLer").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "ler", ms: 0, potencia: Number($("rmPot").value) })));
 $("rmParar").addEventListener("click", (ev) => executar(ev.currentTarget, () => comandoRemoto({ acao: "parar" })));
 $("rmLimpar").addEventListener("click", (ev) => executar(ev.currentTarget, async () => { await comandoRemoto({ acao: "limpar" }); remotoVersao = -1; }));
@@ -1367,6 +1367,16 @@ $("rmGravar").addEventListener("click", (ev) => executar(ev.currentTarget, async
   await comandoRemoto({ acao: "gravar", texto: v, potencia: Number($("rmPotGrav").value) });
   $("rmGravResultado").textContent = "Enviado ao coletor: encoste o coletor na etiqueta…";
 }));
+$("rmBipar").addEventListener("click", (ev) => executar(ev.currentTarget, async () => {
+  await comandoRemoto({ acao: "bipar" });
+  $("rmGravResultado").textContent = "Aponte o coletor para o código de barras…";
+}));
+function codigoRemoto(d) {
+  if (d.erro) return toast(d.erro, "erro");
+  $("rmCodigo").value = d.codigo;
+  $("rmGravResultado").innerHTML = `Código lido no coletor: <b class="mono">${esc(d.codigo)}</b>`;
+  toast("Código lido: " + d.codigo);
+}
 $("rmCodigo").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("rmGravar").click(); } });
 function resultadoGravacaoRemota(r) {
   if (r.ok) {

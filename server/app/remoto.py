@@ -52,12 +52,12 @@ def comandos_para_coletor(apos: int) -> dict:
 
 
 def registrar_leituras(epcs: list[str]) -> int:
-    """Coletor manda as etiquetas lidas."""
+    """Coletor manda as etiquetas lidas (cada leitura conta: a mesma etiqueta pode vir várias vezes)."""
     global _sinal, _versao
     agora = db.agora()
     with _trava:
         _sinal = time.time()
-        for epc in {e.strip().upper() for e in epcs if e and e.strip()}:
+        for epc in (e.strip().upper() for e in epcs if e and e.strip()):
             r = _leituras.get(epc)
             if r:
                 r["vezes"] += 1

@@ -1525,7 +1525,7 @@ telas.remoto = {
   },
   sair() {
     clearInterval(this.timer); this.timer = null;
-    clearTimeout(this.fimLeitura);
+    clearTimeout(this.fimLeitura); clearTimeout(this.fimBipe); this.fimBipe = null;
     this.lerLigado(false);
     try { app?.manterTelaLigada?.(false); } catch {}
   },
@@ -1555,7 +1555,7 @@ telas.remoto = {
     if (c.acao === "ler") {
       definirPotencia(c.potencia || potenciaDaTela("remoto"));
       clearTimeout(this.fimLeitura);
-      this.lerLigado(true);
+      this.lerLigado(true); this.lendoPC = true;
       this.estado(c.ms > 0 ? `Lendo por ${c.ms / 1000} s (comando do PC)…` : "Lendo até o PC mandar parar…");
       if (c.ms > 0) this.fimLeitura = setTimeout(() => this.parar(), c.ms);
     } else if (c.acao === "parar") {
@@ -1563,6 +1563,15 @@ telas.remoto = {
     } else if (c.acao === "limpar") {
       this.enviadas.clear(); this.n = 0;
       if ($("rmCont")) { $("rmCont").textContent = "0"; $("rmUltima").textContent = "—"; }
+    } else if (c.acao === "bipar") {
+      clearTimeout(this.fimLeitura);
+      this.lerLigado(false);
+      if (!app?.escanearCodigo) return this.evento("codigo", { erro: "Atualize o ColetorWMS.apk" });
+      definirGatilho("barras");   // liga o leitor de código de barras do DataWedge
+      this.estado("Lendo código de barras (comando do PC)…");
+      clearTimeout(this.fimBipe);
+      setTimeout(() => { try { app.escanearCodigo(); } catch {} }, 300);
+      this.fimBipe = setTimeout(() => this.voltarRfid(), 8000);   // não leu nada: volta ao RFID
     } else if (c.acao === "gravar") {
       clearTimeout(this.fimLeitura);
       this.lerLigado(false);
@@ -1573,7 +1582,7 @@ telas.remoto = {
   },
   parar() {
     clearTimeout(this.fimLeitura);
-    this.lerLigado(false);
+    this.lerLigado(false); this.lendoPC = false;
     definirPotencia(potenciaDaTela("remoto"));
     this.estado("Pronto: aguardando o PC");
     this.evento("parou", {});
@@ -1589,10 +1598,13 @@ telas.remoto = {
     this.evento("gravacao", r);
   },
   rfid(epc) {
-    if (this.enviadas.has(epc)) return;   // cada etiqueta vai uma vez (o PC conta e mostra)
-    this.enviadas.add(epc); this.n++;
-    bipe("ok");
-    if ($("rmCont")) { $("rmCont").textContent = this.n; $("rmUltima").textContent = epc; }
+    // Toda leitura vai para o PC (a coluna Vezes vai subindo); bipe só na primeira vez de cada etiqueta
+    if (!this.enviadas.has(epc)) {
+      this.enviadas.add(epc); this.n++;
+      bipe("ok");
+      if ($("rmCont")) $("rmCont").textContent = this.n;
+    }
+    if ($("rmUltima")) $("rmUltima").textContent = epc;
     this.buffer.push(epc);
     clearTimeout(this.timerEnvio);
     this.timerEnvio = setTimeout(() => this.enviar(), 250);
@@ -1603,7 +1615,18 @@ telas.remoto = {
     try { await api("POST", "/api/remoto/leituras", { epcs }); }
     catch { epcs.forEach((e) => this.enviadas.delete(e)); }   // sem rede: pode ler de novo
   },
-  codigo(c) { msg("Código de barras: " + c, "info"); },
+  /** Código de barras lido (comando "bipar" do PC ou gatilho): vai para o campo Gravar do PC. */
+  codigo(c) {
+    bipe("ok");
+    this.evento("codigo", { codigo: c });
+    if (this.fimBipe) this.voltarRfid();
+    this.estado(`Código lido: ${c}`);
+  },
+  voltarRfid() {
+    clearTimeout(this.fimBipe); this.fimBipe = null;
+    definirGatilho("rfid");
+    setTimeout(() => { if (telaAtual === "remoto" && !this.lendoPC) this.estado("Pronto: aguardando o PC"); }, 1500);
+  },
 };
 
 // ======================================================================= GRAVAR

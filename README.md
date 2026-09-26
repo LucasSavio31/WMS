@@ -66,7 +66,7 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | PC | **Locais**: cadastro dos locais de estoque (armazéns), com nome e descrição. O **Local-01** vem pronto e é o padrão |
 | PC | **Produtos**: cadastro (SKU, descrição, EAN, unidade, mínimo) |
 | PC | **Ordens de recebimento**: produto e quantidade esperada; acompanha as leituras do coletor ao vivo e finaliza |
-| PC | **Leitor remoto**: usa o leitor RFID do coletor pelo PC, via Wi-Fi. **A leitura é disparada pelo PC** (*Ler 3 s*, *Ler até parar*, *Parar*, com a potência escolhida) e as etiquetas aparecem ao vivo com a situação no estoque (nova, em estoque com item e local, baixada). Dali mesmo: **Gravar etiqueta** (o código digitado/bipado no PC vira o EPC da etiqueta encostada no coletor), **Entrada** das etiquetas novas e **Baixa** das que estão no local escolhido. No coletor, deixe aberta a tela **Leitor do PC** (fora do cabo USB) |
+| PC | **Leitor remoto**: usa o leitor RFID do coletor pelo PC, via Wi-Fi. **A leitura é disparada pelo PC** (*Ler até parar* e *Parar*, com a potência escolhida) e as etiquetas aparecem ao vivo com a situação no estoque (nova, em estoque com item e local, baixada) e quantas vezes cada uma foi lida. Dali mesmo: **Gravar etiqueta** (o código digitado no PC, ou lido pelo **leitor de código de barras do coletor acionado pelo PC** — botão *Ler código no coletor* —, vira o EPC da etiqueta encostada no coletor), **Entrada** das etiquetas novas e **Baixa** das que estão no local escolhido. No coletor, deixe aberta a tela **Leitor do PC** (fora do cabo USB) |
 | PC | **Baixa** (com o EPC ou por quantidade, escolhendo o local), **Inventário** e **Histórico** (com **Relatório PDF** dos movimentos filtrados) |
 | Coletor | **Recebimento**: escolhe a ordem e o item, lê as etiquetas (cada uma vai na hora para o servidor) |
 | Coletor | **Entrada** sem ordem: produto da lista, etiquetas RFID ou quantidade |
@@ -86,8 +86,8 @@ não é atualizado (a tela avisa).
 
 **Leitor remoto (PC ↔ coletor)**: o servidor faz a ponte, e o PC não precisa conhecer o IP do coletor.
 O PC manda o comando (`POST /api/remoto/comando`); o coletor, na tela *Leitor do PC*, pergunta a cada 0,4 s por
-comandos novos (`GET /api/remoto/comandos`), liga o leitor sem o gatilho (`ColetorApp.lerContinuo`) ou grava
-(`ColetorApp.gravarEtiqueta`) e devolve as leituras (`POST /api/remoto/leituras`) e os resultados
+comandos novos (`GET /api/remoto/comandos`), liga o leitor sem o gatilho (`ColetorApp.lerContinuo`), dispara o leitor de código de barras
+(`ColetorApp.escanearCodigo`, soft scan do DataWedge) ou grava (`ColetorApp.gravarEtiqueta`) e devolve as leituras (`POST /api/remoto/leituras`) e os resultados
 (`POST /api/remoto/evento`). O PC acompanha a cada 0,6 s (`GET /api/remoto/estado`). Fica tudo em memória no
 servidor (`server/app/remoto.py`): é o estado de uma bancada, um coletor por vez.
 
@@ -400,6 +400,7 @@ O `gradlew assembleDebug` compila os dois apps (Coletor WMS e AppCenter).
 | Tela → app | `ColetorApp.potencia(%)` | potência da antena |
 | Tela → app | `ColetorApp.localizar(epc)` / `procurar(true/false)` | Localizar: escolhe a etiqueta / procura sem o gatilho |
 | Tela → app | `ColetorApp.gravarEtiqueta(código, potência)` | Gravar: regrava o EPC da etiqueta perto da antena |
+| Tela → app | `ColetorApp.escanearCodigo()` | Leitor do PC: aciona o leitor de código de barras (soft scan do DataWedge) |
 | Tela → app | `ColetorApp.lerContinuo(true/false)` | Leitor do PC: liga/desliga a leitura sem o gatilho (o PC comanda) |
 | Tela → app | `ColetorApp.manterTelaLigada(true/false)` | Leitor do PC: tela sempre ligada (apagada, o Android para o leitor) |
 | App → tela | `resultadoGravacao(json)` | Gravar: gravou ou não, EPC antigo e novo |

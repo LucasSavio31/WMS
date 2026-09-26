@@ -752,7 +752,7 @@ def cancelar_inventario(inventario_id: int, con: Con = Depends(conexao)):
 
 # ================================================================ leitor remoto (o PC aciona o leitor do coletor)
 class ComandoRemoto(BaseModel):
-    acao: Literal["ler", "parar", "gravar", "limpar"]
+    acao: Literal["ler", "parar", "gravar", "limpar", "bipar"]   # bipar: aciona o leitor de código de barras
     ms: int = 3000                    # ler: por quanto tempo (0 = até mandar parar)
     texto: Optional[str] = None       # gravar: o código que vira o EPC
     potencia: Optional[int] = Field(None, ge=1, le=100)

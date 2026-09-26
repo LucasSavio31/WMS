@@ -336,6 +336,13 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun procurarServidor() = runOnUiThread { this@MainActivity.procurarServidor() }
 
+        /** Leitor do PC: aciona o leitor de código de barras (como apertar o gatilho), pelo DataWedge. */
+        @JavascriptInterface
+        fun escanearCodigo() {
+            sendBroadcast(Intent("com.symbol.datawedge.api.ACTION")
+                .putExtra("com.symbol.datawedge.api.SOFT_SCAN_TRIGGER", "START_SCANNING"))
+        }
+
         /** Leitor do PC: liga/desliga a leitura RFID sem o gatilho (o PC comanda). */
         @JavascriptInterface
         fun lerContinuo(ligar: Boolean) = Rfid.lerContinuo(ligar)
