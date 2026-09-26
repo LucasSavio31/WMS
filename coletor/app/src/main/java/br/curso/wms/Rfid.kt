@@ -2,6 +2,7 @@ package br.curso.wms
 
 import android.content.Context
 import android.util.Log
+import org.json.JSONObject
 import com.zebra.rfid.RfidServiceMgr
 import com.zebra.rfid.api3.ENUM_TRANSPORT
 import com.zebra.rfid.api3.ENUM_TRIGGER_MODE
@@ -65,6 +66,17 @@ object Rfid : RfidEventsListener {
 
     /** Localizar: proximidade da etiqueta procurada, de 0 (longe) a 100 (colado). */
     var aoLocalizar: ((Int) -> Unit)? = null
+
+    /** Ler etiqueta: detalhes de cada etiqueta (JSON: epc, pc, epcBits, tid, regiao, canais). */
+    var aoDetalhe: ((String) -> Unit)? = null
+
+    /** Tela "Ler etiqueta" aberta: guarda o PC de cada etiqueta e, ao soltar o gatilho, lê o TID. */
+    @Volatile var detalhar = false
+        set(v) { field = v; if (!v) { pcs.clear(); detalhadas.clear() } }
+    private val pcs = ConcurrentHashMap<String, Int>()          // EPC -> palavra PC (tamanho do EPC)
+    private val detalhadas = ConcurrentHashMap.newKeySet<String>()
+    @Volatile private var regiao = ""                           // região do leitor (ex.: Brasil)
+    @Volatile private var canais = ""                           // frequências em uso, em MHz
 
     /** Gravar etiqueta: (gravou?, mensagem, EPC antigo, EPC novo). */
     var aoGravar: ((Boolean, String, String, String) -> Unit)? = null
@@ -161,6 +173,18 @@ object Rfid : RfidEventsListener {
         gatilho.StopTrigger.setTriggerType(STOP_TRIGGER_TYPE.STOP_TRIGGER_TYPE_IMMEDIATE)
         r.Config.setStartTrigger(gatilho.StartTrigger)
         r.Config.setStopTrigger(gatilho.StopTrigger)
+
+        // Região e canais (frequência) do leitor: aparecem na tela Ler etiqueta
+        try {
+            val reg = r.Config.regulatoryConfig
+            regiao = reg.region ?: ""
+            val mhz = (reg.enabledchannels ?: emptyArray()).mapNotNull { it.trim().toDoubleOrNull() }
+                .map { if (it > 100000) it / 1000.0 else it }
+            canais = if (mhz.isEmpty()) "" else "%.2f–%.2f MHz (%d canais)".format(mhz.min(), mhz.max(), mhz.size)
+            log("região $regiao, canais $canais")
+        } catch (e: Throwable) {
+            Log.w(TAG, "região: ${e.message}")
+        }
 
         // LED verde piscando a cada leitura (fica gravado no serviço RFID do sistema e vale
         // para todos os apps; religa sempre ao conectar, caso tenha ficado desligado)
@@ -275,6 +299,36 @@ object Rfid : RfidEventsListener {
         r.Config.Antennas.setAntennaRfConfig(1, config)
         potenciaNoLeitor = percentual
         log("potência $percentual%")
+    }
+
+    // ------------------------------------------------ ler etiqueta: detalhes (TID, tamanho, frequência)
+
+    /** Lê o TID de cada etiqueta nova (até 20 por vez) e manda os detalhes para a tela. */
+    private fun detalharNovas(r: RFIDReader) {
+        val novas = pcs.keys.filter { it !in detalhadas }.take(20)
+        for (epc in novas) {
+            detalhadas.add(epc)
+            val pc = pcs[epc] ?: 0
+            var tid = ""
+            for (palavras in listOf(6, 2)) {   // TID de 96 bits; se a etiqueta tiver menos, 32 bits
+                try {
+                    val p = TagAccess().ReadAccessParams()
+                    p.setAccessPassword(0)
+                    p.setMemoryBank(MEMORY_BANK.MEMORY_BANK_TID)
+                    p.setOffset(0)
+                    p.setCount(palavras)
+                    tid = r.Actions.TagAccess.readWait(epc, p, null, true)?.memoryBankData ?: ""
+                    if (tid.isNotEmpty()) break
+                } catch (e: Throwable) {
+                    Log.w(TAG, "TID de $epc ($palavras palavras): ${(e as? OperationFailureException)?.vendorMessage ?: e.message}")
+                }
+            }
+            val json = JSONObject()
+                .put("epc", epc).put("pc", pc).put("epcBits", ((pc shr 11) and 0x1F) * 16)
+                .put("tid", tid).put("regiao", regiao).put("canais", canais)
+            log("detalhe: $json")
+            aoDetalhe?.invoke(json.toString())
+        }
     }
 
     // ------------------------------------------------ gravar etiqueta (regravar o EPC)
@@ -501,6 +555,7 @@ object Rfid : RfidEventsListener {
                 return
             }
             lidasNaLeitura += tags.size
+            if (detalhar) for (tag in tags) pcs.putIfAbsent(tag.tagID, tag.pc)
             for (tag in tags) aoLerTag?.invoke(tag.tagID)
         } catch (ex: Throwable) {
         }
@@ -528,7 +583,7 @@ object Rfid : RfidEventsListener {
             }
             naFila(if (apertou) "não começou a leitura" else "não parou a leitura") {
                 val r = leitor ?: return@naFila
-                if (apertou) iniciar(r) else parar(r)
+                if (apertou) iniciar(r) else { parar(r); if (detalhar) detalharNovas(r) }
             }
         } catch (ex: Throwable) {
         }

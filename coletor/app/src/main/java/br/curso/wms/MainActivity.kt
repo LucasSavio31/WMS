@@ -148,9 +148,29 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /** Abre a tela do servidor; se ele não responder em 2 s, abre a tela local (modo sem servidor). */
     private fun abrirTela() {
         if (!::web.isInitialized) return
-        web.loadUrl(Servidor.url.trimEnd('/') + "/m")
+        val base = Servidor.url.trimEnd('/')
+        thread {
+            val ok = try {
+                val c = java.net.URL("$base/api/status").openConnection() as java.net.HttpURLConnection
+                c.connectTimeout = 2000
+                c.readTimeout = 2000
+                val codigo = c.responseCode
+                c.disconnect()
+                codigo == 200
+            } catch (e: Throwable) {
+                false
+            }
+            runOnUiThread { if (ok) web.loadUrl("$base/m") else abrirLocal() }
+        }
+    }
+
+    /** Modo local: a tela que vem dentro do APK. Ler etiqueta e Gravar funcionam sem o servidor. */
+    private fun abrirLocal() {
+        Log.i(TAG, "servidor ${Servidor.url} não respondeu: modo local")
+        web.loadUrl("file:///android_asset/m.html#menu")
     }
 
     // ============================================================ RFID (liga só com o app na frente)
@@ -173,6 +193,7 @@ class MainActivity : Activity() {
         Rfid.aoAvisar = { msg -> chamarTela("statusRfid", msg) }
         Rfid.aoTerminarLeitura = { n -> chamarTela("fimLeituraRfid", n.toString()) }
         Rfid.aoLocalizar = { distancia -> chamarTela("proximidadeRfid", distancia.toString()) }
+        Rfid.aoDetalhe = { json -> chamarTela("detalheEtiqueta", json) }
         Rfid.aoGravar = { ok, mensagem, antigo, novo ->
             chamarTela("resultadoGravacao", JSONObject()
                 .put("ok", ok).put("mensagem", mensagem).put("antigo", antigo).put("novo", novo).toString())
@@ -195,6 +216,8 @@ class MainActivity : Activity() {
         Rfid.aoTerminarLeitura = null
         Rfid.aoLocalizar = null
         Rfid.aoGravar = null
+        Rfid.aoDetalhe = null
+        Rfid.detalhar = false
         Rfid.definirAlvo(null)
         Rfid.desconectar()
         leitorDataWedge(true)   // devolve o leitor de código de barras para os outros apps
@@ -275,6 +298,10 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun potencia(percentual: Int) = Rfid.potencia(percentual)
 
+        /** Tela "Ler etiqueta" aberta/fechada: ao soltar o gatilho, o app lê o TID e manda detalheEtiqueta(json). */
+        @JavascriptInterface
+        fun detalharEtiquetas(ligar: Boolean) { Rfid.detalhar = ligar }
+
         /** Grava o texto (hexadecimal) como EPC da etiqueta perto da antena; resposta em resultadoGravacao(json). */
         @JavascriptInterface
         fun gravarEtiqueta(texto: String, potencia: Int) = Rfid.gravar(texto, potencia)
@@ -307,6 +334,10 @@ class MainActivity : Activity() {
         /** Tela Config: procurar o servidor na rede Wi-Fi. */
         @JavascriptInterface
         fun procurarServidor() = runOnUiThread { this@MainActivity.procurarServidor() }
+
+        /** Modo local: tenta abrir a tela do servidor de novo. */
+        @JavascriptInterface
+        fun recarregarServidor() = runOnUiThread { abrirTela() }
 
         /** Tela Config: volume de mídia do coletor (é o volume dos bipes), de 0 a 100%. */
         @JavascriptInterface
@@ -343,8 +374,10 @@ class MainActivity : Activity() {
                     Toast.makeText(this, "Servidor encontrado: $url", Toast.LENGTH_LONG).show()
                     abrirTela()
                 } else {
+                    abrirLocal()   // por trás do popup: Ler etiqueta e Gravar funcionam mesmo sem servidor
                     configurarServidor("Não achei o servidor na rede. Confira se ele está aberto no PC e se o coletor " +
-                        "está no mesmo Wi-Fi, ou digite o endereço que aparece na tela do PC.")
+                        "está no mesmo Wi-Fi, ou digite o endereço que aparece na tela do PC.\n\n" +
+                        "Sem servidor, toque em Cancelar: Ler etiqueta e Gravar funcionam no modo local.")
                 }
             }
         }
@@ -382,15 +415,11 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /** O servidor caiu com a tela aberta: segue no modo local (Ler etiqueta e Gravar continuam). */
     private fun semConexao(detalhe: String) {
-        AlertDialog.Builder(this)
-            .setTitle("Sem conexão com o servidor")
-            .setMessage("${Servidor.url}\n($detalhe)\n\nConfira o Wi-Fi e se o servidor está ligado no PC.")
-            .setCancelable(false)
-            .setPositiveButton("Tentar de novo") { _, _ -> abrirTela() }
-            .setNegativeButton("Mudar servidor") { _, _ -> configurarServidor() }
-            .setNeutralButton("Procurar na rede") { _, _ -> procurarServidor() }
-            .show()
+        Log.w(TAG, "sem conexão: $detalhe")
+        Toast.makeText(this, "Sem servidor: modo local", Toast.LENGTH_LONG).show()
+        abrirLocal()
     }
 
     /** Voltar do Android: volta de tela dentro da página; no menu, sai do app. */

@@ -74,8 +74,13 @@ No GitHub, abra o arquivo e clique em **Download raw file** (ícone ⬇ à direi
 | Coletor | **Consulta**: escolhe o local e toca em **Consultar**: aparecem os itens daquele local com a quantidade e as etiquetas RFID vinculadas (toque para ver os EPCs), como no PC |
 | Coletor | **Localizar etiqueta**: escolhe o EPC e segura o gatilho; barra quente/frio e bipe mais rápido quanto mais perto |
 | Coletor | **Gravar** (regravar etiqueta): bipe um código de barras (ou digite) e ele fica no campo; encoste o coletor na etiqueta e toque em **Gravar**: o código vira o novo EPC da etiqueta. Grava com o tamanho do código quando a etiqueta aceita (completando com 0 à esquerda até múltiplo de 4); senão, com 24 dígitos. Se a etiqueta estava cadastrada, o cadastro passa a usar o EPC novo |
-| Coletor | **Ler etiqueta**: só para verificação: aperte o gatilho e veja o EPC de cada etiqueta lida (quantos dígitos e quantas vezes foi lida). Nada é gravado, baixado nem enviado ao sistema |
+| Coletor | **Ler etiqueta**: só para verificação: aperte o gatilho e veja o EPC de cada etiqueta lida. Ao soltar o gatilho aparecem os detalhes: tipo (**UHF RFID EPC Gen2, 860–960 MHz**), a frequência em que o leitor está operando (região e canais), o tamanho do EPC gravado, o **chip** (fabricante e modelo, pelo TID) e a **memória** do chip (EPC máximo, área de usuário e TID, em bits e bytes). Nada é gravado, baixado nem enviado ao sistema |
 | Coletor | **Config** (botão **⚙ no topo**, protegida pelo **PIN 1234**, mesmo popup do AppCenter): volume do bipe, **potência da antena separada** para Recebimento/Entrada, Baixa, Localizar e Gravar, e servidor (procurar na rede ou digitar) |
+
+**Modo local (sem servidor)**: **Ler etiqueta** e **Gravar** funcionam só com o coletor. O APK leva uma cópia da
+tela do coletor; se o servidor do PC não responder (em 2 s), o app abre essa cópia com o menu só dessas duas
+funções (e a Config). O botão **Conectar ao servidor** volta ao normal. Gravando sem servidor, o cadastro do estoque
+não é atualizado (a tela avisa).
 
 **Locais de estoque**: tudo que entra (ordem de recebimento ou entrada) vai para o **Local-01**. Quem não usa
 outros locais trabalha só com ele. Para usar mais locais, cadastre em *Locais* e leve os itens pela tela
@@ -231,7 +236,16 @@ O LED verde pisca em estrobo (`RfidServiceMgr.getInstance().ledBlink()`), mais r
 4. O resultado volta para a tela com `resultadoGravacao(json)`; a tela avisa o servidor (`POST /api/tags/regravar`)
    para o cadastro da etiqueta passar a usar o EPC novo.
 
-**6. Cuidados que evitam o leitor travar**
+**6. Ler etiqueta: detalhes da memória**
+
+Com a tela *Ler etiqueta* aberta (`ColetorApp.detalharEtiquetas(true)`), o app guarda o **PC** de cada etiqueta
+lida (`TagData.getPC()`: os 5 bits de cima dizem o tamanho do EPC em palavras de 16 bits). Ao soltar o gatilho, lê o
+**TID** de cada etiqueta nova (`Actions.TagAccess.readWait` no `MEMORY_BANK_TID`) e manda para a tela
+`detalheEtiqueta(json)`, junto com a região e os canais do leitor (`Config.getRegulatoryConfig()`). A tela decodifica
+o TID (classe E2: **MDID** = fabricante, **TMN** = modelo do chip) e, para os chips mais comuns (Impinj Monza/M700,
+NXP UCODE, Alien Higgs), mostra a memória total. A memória de etiquetas UHF é pequena: bits, não KB.
+
+**7. Cuidados que evitam o leitor travar**
 
 - **Fila única**: todo comando ao leitor vai para uma fila de uma thread só (`Executors.newSingleThreadExecutor`).
   Trocar o gatilho ou a potência no meio de uma leitura faz o SDK recusar e às vezes o leitor para de responder.

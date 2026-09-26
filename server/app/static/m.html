@@ -326,6 +326,9 @@ async function executar(botao, acao) {
 const app = (() => {
   try { return window.ColetorApp || null; } catch { return null; }
 })();
+// Modo local: a tela veio de dentro do APK (sem servidor). Só Ler etiqueta, Gravar e Config funcionam.
+const LOCAL = location.protocol === "file:";
+const TELAS_LOCAIS = ["menu", "ler", "gravar", "config"];
 let modoGatilho = "rfid", potenciaAtual = 100;
 /** O gatilho do MC33xxR é um só: lê RFID ou código de barras (a chave ao lado do campo Leitura). */
 function definirGatilho(modo) {
@@ -644,6 +647,7 @@ function sinalWifi(ms) {
 // Hora do SERVIDOR (o relógio do coletor pode estar errado), andando com o relógio local
 let diferencaRelogio = 0;
 async function medirServidor() {
+  if (LOCAL) return mostrarHora();
   const inicio = performance.now();
   try {
     const r = await fetch("/api/status", { cache: "no-store" });
@@ -749,7 +753,9 @@ const SENHA_CONFIG = "1234";
 let configLiberada = false;   // pede a senha toda vez que entra na Config
 function abrir(nome) {
   if (!telas[nome]) nome = "menu";
+  if (LOCAL && !TELAS_LOCAIS.includes(nome)) nome = "menu";
   if (nome !== "config") configLiberada = false;
+  if (telaAtual === "ler" && nome !== "ler") { try { app?.detalharEtiquetas?.(false); } catch {} }
   if (telaAtual === "localizar" && nome !== "localizar") telas.localizar.sair();
   telaAtual = nome;
   $("titulo").textContent = telas[nome].titulo;
@@ -772,6 +778,11 @@ const telas = {};
 
 // Rodapé (todas as telas): servidor, data e hora do servidor
 async function atualizarRodape() {
+  if (LOCAL) {
+    const d = new Date();
+    $("rodape").textContent = `Modo local (sem servidor) · ${d.toLocaleDateString("pt-BR")} ${d.toTimeString().slice(0, 5)}`;
+    return;
+  }
   try {
     const st = await api("GET", "/api/status");
     $("rodape").textContent = `Servidor ${location.host} · ${dataBR(st.data_hora)} ${st.data_hora.slice(11, 16)}`;
@@ -785,6 +796,17 @@ telas.menu = {
   titulo: "WMS Coletor",
   async abrir() {
     const item = (hash, ic, nome, id = "") => `<a class="tile" href="#${hash}" style="text-decoration:none"><span class="ic">${ic}</span>${nome}<span class="badge" id="${id}"></span></a>`;
+    if (LOCAL) {
+      tela.innerHTML = `<div class="card"><h2>Modo local (sem servidor)</h2>
+          <p class="fraco" style="margin:0">O servidor do PC não respondeu. Estas funções usam só o leitor RFID do coletor.</p></div>
+        <div class="grade-menu">
+          ${item("gravar", "📝", "Gravar<br><small class=fraco>regravar etiqueta</small>")}${item("ler", "📡", "Ler etiqueta<br><small class=fraco>mostra o EPC</small>")}
+        </div>
+        <div class="botoes" style="margin-top:10px"><button class="b primario" data-acao="conectarServidor">🔄 Conectar ao servidor</button></div>
+        <div class="botoes"><button class="b" data-acao="procurarServidor">📡 Procurar na rede</button>
+          <button class="b" data-acao="digitarServidor">✏️ Endereço</button></div>`;
+      return;
+    }
     tela.innerHTML = `<div class="grade-menu">
       ${item("entrada", "📥", "Recebimento<br><small class=fraco>ordens do PC</small>", "bRec")}${item("avulsa", "➕", "Entrada<br><small class=fraco>sem ordem</small>")}
       ${item("baixa", "📤", "Baixa")}${item("inventario", "📋", "Inventário", "bInv")}
@@ -799,6 +821,9 @@ telas.menu = {
   },
   rfid() { msg("Escolha uma opção do menu", "info", false); },
   codigo() { msg("Escolha uma opção do menu", "info", false); },
+  conectarServidor() { try { app?.recarregarServidor?.(); } catch {} },
+  procurarServidor() { try { app?.procurarServidor?.(); } catch {} },
+  digitarServidor() { try { app?.servidor?.(); } catch {} },
 };
 
 // ======================================================================= ENTRADA AVULSA (sem ordem)
@@ -1366,9 +1391,35 @@ $("btConfig").addEventListener("click", (ev) => { ev.stopPropagation(); location
 
 // ======================================================================= LER ETIQUETA
 // Só lê: aperte o gatilho perto das etiquetas e veja o EPC de cada uma.
+// Fabricantes de chip (MDID do TID, padrão GS1/EPCglobal) e chips mais comuns (TMN):
+// nome, EPC máximo e memória de usuário em bits.
+const FABRICANTES = { 0x001: "Impinj", 0x002: "Texas Instruments", 0x003: "Alien Technology", 0x004: "Intelleflex",
+  0x005: "Atmel", 0x006: "NXP", 0x007: "ST Microelectronics", 0x008: "EP Microelectronics", 0x00A: "Sentech",
+  0x00B: "EM Microelectronic", 0x00C: "Renesas", 0x00F: "Quanray", 0x010: "Fujitsu", 0x018: "Ceitec" };
+const CHIPS = {
+  "001-100": ["Monza 4D", 128, 32], "001-105": ["Monza 4QT", 128, 512], "001-10C": ["Monza 4E", 496, 128],
+  "001-130": ["Monza 5", 128, 32], "001-160": ["Monza R6", 96, 0], "001-170": ["Monza R6-P", 128, 64],
+  "001-190": ["M730", 128, 0], "001-191": ["M750", 96, 32],
+  "006-810": ["UCODE 7", 128, 0], "006-894": ["UCODE 8", 128, 0], "006-915": ["UCODE 9", 96, 0],
+  "003-412": ["Higgs-3", 480, 512], "003-414": ["Higgs-4", 128, 128], "003-811": ["Higgs-9", 496, 688],
+};
+const bitsBytes = (b) => `${b} bits (${b / 8} bytes)`;
+/** TID classe E2 (Gen2): 8 bits E2, 12 bits (XTID/S/F + MDID de 9 bits), 12 bits TMN (modelo). */
+function chipDoTid(tid) {
+  if (!/^E2[0-9A-F]{6}/i.test(tid || "")) return null;
+  const mdid = parseInt(tid.slice(2, 5), 16) & 0x1FF, tmn = parseInt(tid.slice(5, 8), 16);
+  const chave = mdid.toString(16).toUpperCase().padStart(3, "0") + "-" + tmn.toString(16).toUpperCase().padStart(3, "0");
+  const fab = FABRICANTES[mdid] || `fabricante 0x${mdid.toString(16).toUpperCase()}`;
+  const c = CHIPS[chave];
+  return c ? { nome: `${fab} ${c[0]}`, epcMax: c[1], user: c[2] } : { nome: `${fab}, modelo 0x${tmn.toString(16).toUpperCase().padStart(3, "0")}` };
+}
+window.detalheEtiqueta = (json) => { try { telas.ler.detalhe(JSON.parse(json)); } catch {} };
+
 telas.ler = {
   titulo: "Ler etiqueta",
   abrir() {
+    this.detalhes = new Map();   // EPC -> detalhes vindos do app (TID, PC, região)
+    try { app?.detalharEtiquetas?.(true); } catch {}
     this.lidas = new Map();   // EPC -> quantas vezes o leitor viu
     tela.innerHTML = `<div class="card"><p class="fraco" style="margin:0"><b>Só para verificação</b>: aperte o gatilho perto da etiqueta
         e o EPC aparece aqui. Nada é gravado, baixado nem enviado ao sistema.</p></div>
@@ -1390,10 +1441,39 @@ telas.ler = {
     $("lrCont").textContent = this.lidas.size;
     $("lrLista").innerHTML = [...this.lidas].reverse().map(([epc, n]) => `<li>
         <div class="info"><div class="mono" style="font-size:17px;font-weight:700;word-break:break-all">${esc(epc)}</div>
-          <div class="fraco">${epc.length} dígitos · lida ${n} vez(es)</div></div></li>`).join("")
+          <div class="fraco">${epc.length} dígitos · lida ${n} vez(es)</div>
+          ${this.htmlDetalhe(epc)}</div></li>`).join("")
       || `<li class="vazio">Nenhuma etiqueta lida ainda</li>`;
   },
-  limpar() { this.lidas.clear(); this.desenhar(); },
+  /** Tipo e frequência, tamanho do EPC, chip e memória (pelo TID lido pelo app). */
+  htmlDetalhe(epc) {
+    const linha = (rotulo, valor) => `<div style="font-size:13px"><span class="fraco">${rotulo}:</span> ${valor}</div>`;
+    let h = linha("Tipo", "UHF RFID · EPC Gen2 (860–960 MHz)");
+    const d = this.detalhes.get(epc);
+    if (!d) return h + (app ? '<div class="fraco" style="font-size:12px">Detalhes da memória ao soltar o gatilho…</div>' : "");
+    if (d.canais || d.regiao) h += linha("Leitor", esc([d.regiao, d.canais].filter(Boolean).join(" · ")));
+    if (d.epcBits) h += linha("EPC gravado", bitsBytes(d.epcBits));
+    const chip = chipDoTid(d.tid);
+    if (chip) {
+      h += linha("Chip", esc(chip.nome));
+      if (chip.epcMax !== undefined) {
+        const tidBits = d.tid.length * 4;
+        h += linha("Memória", `EPC até ${bitsBytes(chip.epcMax)} · usuário ${bitsBytes(chip.user)} · TID ${tidBits} bits`);
+      }
+    }
+    if (d.tid) h += `<div class="mono fraco" style="font-size:12px;word-break:break-all">TID ${esc(d.tid)}</div>`;
+    else h += '<div class="fraco" style="font-size:12px">TID não lido (aproxime e leia de novo)</div>';
+    return h;
+  },
+  detalhe(d) {
+    if (!d?.epc) return;
+    if (d.tid || !this.detalhes.get(d.epc)?.tid) this.detalhes.set(d.epc, d);   // não troca um TID lido por um vazio
+    this.desenhar();
+  },
+  limpar() {
+    this.lidas.clear(); this.detalhes.clear(); this.desenhar();
+    try { app?.detalharEtiquetas?.(false); app?.detalharEtiquetas?.(true); } catch {}   // lê o TID de novo
+  },
   codigo(c) { msg("Código de barras: " + c, "info"); },
 };
 
@@ -1459,7 +1539,8 @@ telas.gravar = {
     if (!r.ok) { bipe("alerta"); msg(r.mensagem, "info", false); return; }
     bipe("ok");
     let cadastro = "";
-    try {
+    if (LOCAL) cadastro = '<div class="fraco" style="margin-top:6px">Sem servidor: se esta etiqueta estava no estoque, o cadastro continua com o EPC antigo.</div>';
+    else try {
       const s = await api("POST", "/api/tags/regravar", { antigo: r.antigo, novo: r.novo });
       if (s.atualizado) cadastro = `<div class="fraco" style="margin-top:6px">Cadastro atualizado: ${esc(s.sku)} agora usa o EPC novo.</div>`;
     } catch (e) { cadastro = `<div class="fraco" style="margin-top:6px">${esc(e.message)}</div>`; }
@@ -1517,7 +1598,7 @@ telas.config = {
             <input type="range" data-pot="${k}" min="10" max="100" step="10" value="${cfg[k]}" style="padding:0"></div>`).join("")}
         <p class="fraco" style="margin:6px 0 0">100% lê mais longe. Menos potência lê só o que está perto (evita pegar mercadoria vizinha).</p></div>
       <div class="card"><h2>Servidor</h2>
-        <div>Conectado a <b class="mono">${esc(location.origin)}</b></div>
+        <div>${LOCAL ? "<b>Modo local (sem servidor)</b>" : `Conectado a <b class="mono">${esc(location.origin)}</b>`}</div>
         <div class="botoes" style="margin-top:8px"><button class="b primario" data-acao="procurar">📡 Procurar servidor na rede</button></div>
         <div class="botoes"><button class="b" data-acao="digitar">✏️ Digitar endereço</button></div></div>`;
     $("cfVolume").addEventListener("input", () => {
@@ -1545,9 +1626,9 @@ telas.config = {
 
 // ======================================================================= início
 (async () => {
-  try { await carregarApoio(); } catch (e) { msg(e.message, "erro"); }
+  if (!LOCAL) try { await carregarApoio(); } catch (e) { msg(e.message, "erro"); }
   abrir(location.hash.slice(1) || "menu");
-  setInterval(() => carregarApoio().catch(() => {}), 60000);
+  if (!LOCAL) setInterval(() => carregarApoio().catch(() => {}), 60000);
 })();
 </script>
 </body>
