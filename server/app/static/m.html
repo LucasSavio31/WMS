@@ -1525,7 +1525,7 @@ telas.remoto = {
   },
   sair() {
     clearInterval(this.timer); this.timer = null;
-    clearTimeout(this.fimLeitura); clearTimeout(this.fimBipe); this.fimBipe = null;
+    clearTimeout(this.fimLeitura); this.pararBipe();
     this.lerLigado(false);
     try { app?.manterTelaLigada?.(false); } catch {}
   },
@@ -1559,6 +1559,7 @@ telas.remoto = {
       this.estado(c.ms > 0 ? `Lendo por ${c.ms / 1000} s (comando do PC)…` : "Lendo até o PC mandar parar…");
       if (c.ms > 0) this.fimLeitura = setTimeout(() => this.parar(), c.ms);
     } else if (c.acao === "parar") {
+      if (this.bipando) this.voltarRfid();
       this.parar();
     } else if (c.acao === "limpar") {
       this.enviadas.clear(); this.n = 0;
@@ -1568,10 +1569,18 @@ telas.remoto = {
       this.lerLigado(false);
       if (!app?.escanearCodigo) return this.evento("codigo", { erro: "Atualize o ColetorWMS.apk" });
       definirGatilho("barras");   // liga o leitor de código de barras do DataWedge
-      this.estado("Lendo código de barras (comando do PC)…");
-      clearTimeout(this.fimBipe);
-      setTimeout(() => { try { app.escanearCodigo(); } catch {} }, 300);
-      this.fimBipe = setTimeout(() => this.voltarRfid(), 8000);   // não leu nada: volta ao RFID
+      this.estado("Aponte para o código de barras (comando do PC)…");
+      // Mantém o leitor acionado até ler: espera o DataWedge ligar o scanner e redispara o feixe
+      // a cada 3 s, até chegar um código, o PC mandar parar ou passar 30 s.
+      this.pararBipe();
+      this.bipando = true;
+      const disparar = () => {
+        if (!this.bipando) return;
+        try { app.escanearCodigo(); } catch {}
+        this.timerBipe = setTimeout(disparar, 3000);
+      };
+      this.timerBipe = setTimeout(disparar, 700);
+      this.fimBipe = setTimeout(() => this.voltarRfid(), 30000);
     } else if (c.acao === "gravar") {
       clearTimeout(this.fimLeitura);
       this.lerLigado(false);
@@ -1619,12 +1628,16 @@ telas.remoto = {
   codigo(c) {
     bipe("ok");
     this.evento("codigo", { codigo: c });
-    if (this.fimBipe) this.voltarRfid();
+    if (this.bipando) this.voltarRfid();
     this.estado(`Código lido: ${c}`);
   },
+  pararBipe() {
+    this.bipando = false;
+    clearTimeout(this.timerBipe); clearTimeout(this.fimBipe); this.fimBipe = null;
+  },
   voltarRfid() {
-    clearTimeout(this.fimBipe); this.fimBipe = null;
-    definirGatilho("rfid");
+    this.pararBipe();
+    definirGatilho("rfid");   // desliga o scanner do DataWedge (o feixe apaga) e volta ao RFID
     setTimeout(() => { if (telaAtual === "remoto" && !this.lendoPC) this.estado("Pronto: aguardando o PC"); }, 1500);
   },
 };

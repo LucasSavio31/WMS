@@ -1370,11 +1370,18 @@ $("rmGravar").addEventListener("click", (ev) => executar(ev.currentTarget, async
 $("rmBipar").addEventListener("click", (ev) => executar(ev.currentTarget, async () => {
   await comandoRemoto({ acao: "bipar" });
   $("rmGravResultado").textContent = "Aponte o coletor para o código de barras…";
-}));
+}).then(focarCodigoRemoto));
+/** Cursor no campo "Código a gravar", no fim do texto (Enter grava direto). */
+function focarCodigoRemoto() {
+  const c = $("rmCodigo");
+  c.focus();
+  c.setSelectionRange(c.value.length, c.value.length);
+}
 function codigoRemoto(d) {
   if (d.erro) return toast(d.erro, "erro");
   $("rmCodigo").value = d.codigo;
-  $("rmGravResultado").innerHTML = `Código lido no coletor: <b class="mono">${esc(d.codigo)}</b>`;
+  focarCodigoRemoto();
+  $("rmGravResultado").innerHTML = `Código lido no coletor: <b class="mono">${esc(d.codigo)}</b> · Enter ou Gravar para gravar`;
   toast("Código lido: " + d.codigo);
 }
 $("rmCodigo").addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); $("rmGravar").click(); } });
